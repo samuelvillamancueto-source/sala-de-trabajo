@@ -1,0 +1,1 @@
+export default { url: 'https://iwnlchaewuaiqopsnjjz.supabase.co', anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3bmxjaGFld3VhaXFvcHNuamp6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI2MDM4MTYsImV4cCI6MjEwODE3OTgxNn0.Qx9Wh2bbWr5BtXTDrkWsV1FMvpFW9BigDBn3bbbgTCw' };
