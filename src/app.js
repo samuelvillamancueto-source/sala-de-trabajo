@@ -38,7 +38,8 @@ async function refresh() {
   [S.tasks, S.clients, S.people] = await Promise.all([api.tasks(), api.clients(), api.people()]);
   S.ideas = isAdmin() ? await api.ideas().catch(() => []) : [];
 }
-function toast(m) { S.toast = m; const t = $('#toast'); if (t) { t.textContent = m; t.classList.add('on'); setTimeout(() => t.classList.remove('on'), 2600); } }
+function toast(m) {
+  /* #toast tiene role=status */ S.toast = m; const t = $('#toast'); if (t) { t.textContent = m; t.classList.add('on'); setTimeout(() => t.classList.remove('on'), 2600); } }
 function friendly(e) {
   const m = String(e?.message || e || ''); const c = e?.code || '';
   if (/jwt|token.*expired|PGRST30[0-9]/i.test(m + c)) return 'Tu sesión ha caducado. Vuelve a entrar.';
@@ -256,10 +257,11 @@ function vEquipo() {
   <select name="role"><option value="editor">Editor</option><option value="admin">Administrador</option><option value="agent">Cuenta de servicio (Instinct)</option></select><button class="btn primary">Invitar</button></form>
   <p class="muted small">Se envía un correo con un enlace para elegir contraseña. Hasta que la persona lo acepta, aparece como pendiente. La invitación caduca a los 14 días.</p></section>
   <section><h2>Copia de seguridad</h2><div class="card inline2"><p class="muted small">Descarga todo (tareas, ideas, clientes, entregas, comentarios y actividad) en un archivo. Además, la base de datos guarda una copia automática cada noche durante 14 días. El archivo no incluye contraseñas, pero sí datos de clientes: guárdalo en un sitio privado.</p><button class="btn" id="exp">Descargar copia (JSON)</button></div></section>
-  <section><h2>Personas</h2><div class="card" id="plist">Cargando…</div></section>`;
+  <section><h2>Personas</h2><div class="card" id="plist" aria-live="polite">Cargando…</div></section>`;
 }
 async function loadEquipo() {
-  const [profiles, invites] = await Promise.all([api.profiles(), api.invites()]);
+  let profiles, invites;
+  try { [profiles, invites] = await Promise.all([api.profiles(), api.invites()]); } catch (e) { $('#plist').innerHTML = '<p class="empty">No se pudo cargar el equipo. <button class="link" type="button" id="retry">Reintentar</button></p>'; $('#retry').onclick = loadEquipo; return; }
   const registered = new Set(profiles.map((p) => p.email));
   const pend = invites.filter((i) => !registered.has(i.email));
   $('#plist').innerHTML = profiles.map((p) => `<div class="person"><div><b>${esc(p.name)}</b><small>${esc(p.email)}</small></div>
@@ -269,7 +271,26 @@ async function loadEquipo() {
 }
 
 // ---------- Modal ----------
-function modal(html) { const m = document.createElement('div'); m.className = 'overlay'; m.innerHTML = `<div class="modal card" role="dialog" aria-modal="true">${html}</div>`; document.body.appendChild(m); m.addEventListener('click', (e) => { if (e.target === m || e.target.closest('[data-close]')) m.remove(); }); return m; }
+function modal(html) {
+  const prev = document.activeElement;
+  const m = document.createElement('div'); m.className = 'overlay';
+  m.innerHTML = `<div class="modal card" role="dialog" aria-modal="true" tabindex="-1">${html}</div>`;
+  document.body.appendChild(m);
+  const box = m.firstElementChild; const h = box.querySelector('h1,h2,h3'); if (h) { h.id = 'mt' + Date.now(); box.setAttribute('aria-labelledby', h.id); }
+  const close = () => { m.remove(); document.removeEventListener('keydown', onKey); if (prev && prev.focus && document.contains(prev)) prev.focus(); };
+  const onKey = (e) => {
+    if (e.key === 'Escape' && document.body.contains(m) && m === [...document.querySelectorAll('.overlay')].pop()) return close();
+    if (e.key === 'Tab' && document.body.contains(m)) {
+      const f = [...box.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select,textarea,[tabindex]:not([tabindex="-1"])')].filter((x) => x.offsetParent !== null);
+      if (!f.length) return; const a = f[0], z = f[f.length - 1];
+      if (e.shiftKey && (document.activeElement === a || document.activeElement === box)) { e.preventDefault(); z.focus(); } else if (!e.shiftKey && document.activeElement === z) { e.preventDefault(); a.focus(); }
+    }
+  };
+  document.addEventListener('keydown', onKey);
+  m.addEventListener('click', (e) => { if (e.target === m || e.target.closest('[data-close]')) close(); });
+  box.focus();
+  return m;
+}
 const opts = (obj, sel) => Object.entries(obj).map(([k, l]) => `<option value="${k}" ${sel === k ? 'selected' : ''}>${l}</option>`).join('');
 
 async function openTask(id) {

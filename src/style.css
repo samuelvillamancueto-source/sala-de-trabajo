@@ -112,3 +112,9 @@ th{color:var(--mut)}td{border-top-color:var(--line)}tbody tr:hover{background:va
 .irow{flex-wrap:wrap}.irow select.ist{max-width:100%;min-width:0}
 
 .inline2{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}.inline2 p{margin:0;flex:1;min-width:220px}
+
+/* accesibilidad */
+a:focus-visible,button:focus-visible,.link:focus-visible,.nav:focus-visible,.task:focus-visible,.client:focus-visible,summary:focus-visible{outline:2px solid rgba(147,164,245,.7);outline-offset:2px}
+.modal:focus{outline:none}
+.empty{color:var(--mut)}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
