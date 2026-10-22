@@ -94,12 +94,12 @@ function renderLogin(msg = '') {
 // ---------- Layout ----------
 function nav() {
   const items = isAdmin()
-    ? [['resumen', 'Resumen'], ['tareas', 'Tareas'], ['mis', 'Mis encargos'], ['ideas', 'Ideas'], ['clientes', 'Clientes'], ['equipo', 'Equipo']]
+    ? [['resumen', 'Resumen'], ['tareas', 'Tareas'], ['mis', 'Mis encargos'], ['ideas', 'Ideas'], ['finanzas', 'Finanzas'], ['clientes', 'Clientes'], ['equipo', 'Equipo']]
     : [['mis', 'Mis encargos']];
   return items.map(([k, l]) => `<a href="#/${k}" class="nav ${S.view === k ? 'on' : ''}" data-v="${k}">${l}</a>`).join('');
 }
 function render() {
-  const body = { resumen: vResumen, tareas: vTareas, mis: vMis, clientes: vClientes, equipo: vEquipo, ideas: vIdeas }[S.view] || vMis;
+  const body = { resumen: vResumen, tareas: vTareas, mis: vMis, clientes: vClientes, equipo: vEquipo, ideas: vIdeas, finanzas: vFinanzas }[S.view] || vMis;
   $('#app').innerHTML = `
   <div class="shell">
     <header class="top"><div class="brand"><span class="dot"></span>Sala de Trabajo</div>
@@ -383,6 +383,133 @@ function newClient() {
   $('#cf', m).onsubmit = (e) => { e.preventDefault(); guard(async () => { const f = new FormData(e.target); await api.createClient({ name: f.get('name').trim(), kind: f.get('kind') }); await refresh(); m.remove(); render(); }); };
 }
 
+
+// ---------- Finanzas (compartidas Samuel + Tellez) ----------
+const FIN_G = ['Material', 'Software', 'Transporte', 'Comida', 'Equipo', 'Impuestos', 'Marketing', 'Otros'];
+const FIN_I = ['Clientes', 'Otros'];
+const eur = (c) => (c / 100).toLocaleString('es-ES', { style: 'currency', currency: 'EUR', useGrouping: 'always' });
+const monthKey = (d) => d.slice(0, 7);
+const addMonth = (k, n) => { const [y, m] = k.split('-').map(Number); const d = new Date(Date.UTC(y, m - 1 + n, 1)); return d.toISOString().slice(0, 7); };
+const monthLabel = (k) => { const [y, m] = k.split('-').map(Number); return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString('es-ES', { month: 'long', year: 'numeric', timeZone: 'UTC' }); };
+const parseEur = (s) => { const n = Math.round(parseFloat(String(s).replace(/\s/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')) * 100); return Number.isFinite(n) ? n : NaN; };
+function todayKey() { return new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Madrid' }); }
+function vFinanzas() {
+  if (!S.fin) S.fin = { month: monthKey(todayKey()), entries: null, budgets: [], err: false };
+  return `<h1>Finanzas</h1><p class="muted small">Ingresos y gastos de los dos, en común. Solo importes: no guardes números de tarjeta, cuentas ni claves.</p><div id="finbody" aria-live="polite"><p class="empty">Cargando…</p></div>`;
+}
+async function loadFin() {
+  const box = $('#finbody'); if (!box) return;
+  try { const [e, b] = await Promise.all([api.finEntries(), api.finBudgets()]); S.fin.entries = e; S.fin.budgets = b; S.fin.err = false; }
+  catch (er) { console.error(er); box.innerHTML = '<p class="empty">No se pudieron cargar las finanzas. <button class="link" type="button" id="finretry">Reintentar</button></p>'; $('#finretry').onclick = loadFin; return; }
+  paintFin();
+}
+function finSums(entries, k) {
+  const r = { ing: 0, gas: 0, cat: {} };
+  for (const e of entries) { if (monthKey(e.occurred_on) !== k) continue; if (e.kind === 'ingreso') r.ing += e.amount_cents; else { r.gas += e.amount_cents; r.cat[e.category] = (r.cat[e.category] || 0) + e.amount_cents; } }
+  return r;
+}
+function paintFin() {
+  const box = $('#finbody'); if (!box) return;
+  const { month: k, entries, budgets } = S.fin; const pk = addMonth(k, -1);
+  const cur = finSums(entries, k), prev = finSums(entries, pk);
+  const bm = (kk) => budgets.filter((b) => monthKey(b.month) === kk);
+  const planIng = bm(k).filter((b) => b.kind === 'ingreso').reduce((s, b) => s + b.planned_cents, 0);
+  const goal = bm(k).filter((b) => b.kind === 'ahorro').reduce((s, b) => s + b.planned_cents, 0);
+  const catBud = Object.fromEntries(bm(k).filter((b) => b.kind === 'gasto').map((b) => [b.category, b.planned_cents]));
+  const planGas = Object.values(catBud).reduce((s, v) => s + v, 0);
+  const balance = cur.ing - cur.gas, margen = balance - goal;
+  const delta = (a, b) => (b === 0 ? (a === 0 ? '' : 'sin mes anterior') : `${a >= b ? '+' : ''}${Math.round(((a - b) / b) * 100)}% vs mes anterior`);
+  const cats = [...new Set([...Object.keys(cur.cat), ...Object.keys(prev.cat), ...Object.keys(catBud)])].sort((a, b) => (cur.cat[b] || 0) - (cur.cat[a] || 0));
+  const mx = Math.max(1, ...cats.map((c) => Math.max(cur.cat[c] || 0, prev.cat[c] || 0, catBud[c] || 0)), cur.ing, prev.ing, cur.gas, prev.gas, planIng, planGas);
+  const w = (v) => Math.min(100, Math.max(v ? 1.5 : 0, Math.round((v / mx) * 100)));
+  const row = (label, c, p, bud) => `<div class="frow"><div class="flab"><span>${esc(label)}</span><span class="muted small">${eur(c)}${bud ? ' de ' + eur(bud) : ''}${bud && c > bud ? ' · te pasas ' + eur(c - bud) : ''}</span></div>
+    <div class="fbars" role="img" aria-label="${esc(label)}: este mes ${eur(c)}, mes anterior ${eur(p)}${bud ? ', presupuesto ' + eur(bud) : ''}"><div class="fb prev" style="width:${w(p)}%"></div><div class="fb cur ${bud && c > bud ? 'over' : ''}" style="width:${w(c)}%"></div>${bud ? `<div class="fmark" style="left:${w(bud)}%"></div>` : ''}</div></div>`;
+  const list = entries.filter((e) => monthKey(e.occurred_on) === k);
+  const who = (id) => (S.people || []).find((x) => x.id === id)?.name || '';
+  box.innerHTML = `
+  <div class="fhead"><button class="btn ghost sm" id="fprev" aria-label="Mes anterior">&larr;</button><h2 class="fmonth">${esc(monthLabel(k))}</h2><button class="btn ghost sm" id="fnext" aria-label="Mes siguiente">&rarr;</button>
+    <span class="grow"></span><button class="btn" id="fplan">Plan del mes</button><button class="btn primary" id="fnew">+ Movimiento</button></div>
+  <div class="stats fstats">
+    <div class="card stat"><span>Ingresos</span><b>${eur(cur.ing)}</b><small class="muted">${planIng ? 'Previsto ' + eur(planIng) + ' · ' : ''}${esc(delta(cur.ing, prev.ing))}</small></div>
+    <div class="card stat"><span>Gastos</span><b>${eur(cur.gas)}</b><small class="muted">${planGas ? 'Previsto ' + eur(planGas) + ' · ' : ''}${esc(delta(cur.gas, prev.gas))}</small></div>
+    <div class="card stat"><span>Balance</span><b class="${balance < 0 ? 'neg' : ''}">${eur(balance)}</b><small class="muted">Ingresos menos gastos</small></div>
+    <div class="card stat ${margen < 0 ? 'warn' : 'hl'}"><span>Margen de ahorro</span><b>${eur(margen)}</b><small class="muted">${goal ? 'Objetivo ' + eur(goal) + (margen >= 0 ? ' cumplido' : ': te faltan ' + eur(-margen)) : 'Sin objetivo: define uno en Plan del mes'}</small></div>
+  </div>
+  <section><h2>Este mes frente al anterior</h2><div class="card">
+    <div class="flegend"><span><i class="lg prev"></i>${esc(monthLabel(pk))}</span><span><i class="lg cur"></i>${esc(monthLabel(k))}</span><span><i class="lg mk"></i>Presupuesto</span></div>
+    ${row('Ingresos', cur.ing, prev.ing, planIng)}${row('Gastos', cur.gas, prev.gas, planGas)}
+    ${cats.length ? '<h3>Gastos por categoría</h3>' + cats.map((c) => row(c, cur.cat[c] || 0, prev.cat[c] || 0, catBud[c])).join('') : '<p class="empty">Aún no hay gastos este mes.</p>'}
+  </div></section>
+  <section><h2>Movimientos</h2><div class="card tablewrap">${list.length ? `<table><thead><tr><th>Fecha</th><th>Concepto</th><th>Categoría</th><th>Importe</th><th>Quién</th><th><span class="sr">Ticket</span></th></tr></thead><tbody>${list.map((e) => `<tr data-fe="${e.id}" tabindex="0"><td>${fmt(e.occurred_on)}</td><td>${esc(e.note || '—')}${e.recurring ? ' <span class="chip">Recurrente</span>' : ''}</td><td>${esc(e.category)}</td><td class="${e.kind === 'ingreso' ? 'pos' : ''}">${e.kind === 'ingreso' ? '+' : '−'}${eur(e.amount_cents)}</td><td>${esc(who(e.created_by))}</td><td>${e.receipt_path ? '<span class="chip">Ticket</span>' : ''}</td></tr>`).join('')}</tbody></table>` : '<p class="empty big">Sin movimientos este mes. Añade el primero con "+ Movimiento".</p>'}</div></section>`;
+  $('#fprev').onclick = () => { S.fin.month = pk; paintFin(); };
+  $('#fnext').onclick = () => { S.fin.month = addMonth(k, 1); paintFin(); };
+  $('#fnew').onclick = () => openFinEntry(null);
+  $('#fplan').onclick = () => openFinPlan(k, bm(k));
+  box.querySelectorAll('[data-fe]').forEach((tr) => { tr.onclick = () => openFinEntry(tr.dataset.fe); tr.onkeydown = (e) => { if (e.key === 'Enter') openFinEntry(tr.dataset.fe); }; });
+}
+function compressImage(file) {
+  return new Promise((res, rej) => {
+    const img = new Image(); const u = URL.createObjectURL(file);
+    img.onload = () => { const s = Math.min(1, 1600 / Math.max(img.width, img.height)); const c = document.createElement('canvas'); c.width = Math.round(img.width * s); c.height = Math.round(img.height * s); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(u); c.toBlob((b) => (b ? res(b) : rej(new Error('No se pudo procesar la imagen.'))), 'image/jpeg', 0.8); };
+    img.onerror = () => { URL.revokeObjectURL(u); rej(new Error('No se pudo leer la imagen. Prueba con otra foto.')); };
+    img.src = u;
+  });
+}
+function openFinEntry(id) {
+  const e = id ? S.fin.entries.find((x) => x.id === id) : null;
+  const kind = e?.kind || 'gasto';
+  const m = modal(`<form id="ff"><div class="head"><h2>${e ? 'Editar movimiento' : 'Nuevo movimiento'}</h2><button type="button" class="btn ghost sm" data-close>Cerrar</button></div>
+    <label>Tipo<select name="kind"><option value="gasto" ${kind === 'gasto' ? 'selected' : ''}>Gasto</option><option value="ingreso" ${kind === 'ingreso' ? 'selected' : ''}>Ingreso</option></select></label>
+    <label>Importe (€)<input name="amount" inputmode="decimal" required placeholder="0,00" value="${e ? (e.amount_cents / 100).toFixed(2).replace('.', ',') : ''}"></label>
+    <label>Fecha<input name="date" type="date" required value="${e?.occurred_on || todayKey()}"></label>
+    <label>Categoría<input name="category" list="fcats" required maxlength="40" value="${esc(e?.category || '')}" placeholder="Elige o escribe"><datalist id="fcats">${[...new Set([...FIN_G, ...FIN_I, ...S.fin.entries.map((x) => x.category)])].map((c) => `<option value="${esc(c)}">`).join('')}</datalist></label>
+    <label>Concepto<input name="note" maxlength="500" value="${esc(e?.note || '')}"></label>
+    <label class="check"><input type="checkbox" name="recurring" ${e?.recurring ? 'checked' : ''}> Se repite cada mes</label>
+    <label>Foto del ticket (opcional)<input type="file" name="photo" accept="image/*" capture="environment"></label>
+    <p class="muted small" id="fcur">${e?.receipt_path ? 'Ya tiene un ticket adjunto. <button class="link" type="button" id="fview">Verlo</button> · <button class="link" type="button" id="frm">Quitarlo</button>' : 'Se reduce en tu móvil antes de subirse a un almacén privado.'}</p>
+    <div class="err" id="ferr" role="alert"></div>
+    <div class="actions">${e ? '<button type="button" class="btn danger" id="fdel">Eliminar</button>' : '<span></span>'}<button class="btn primary" type="submit">Guardar</button></div></form>`);
+  let path = e?.receipt_path || null, removed = false;
+  const v = $('#fview', m); if (v) v.onclick = () => guard(async () => { const u = await api.receiptUrl(path); if (u) window.open(u, '_blank', 'noopener'); });
+  const rm = $('#frm', m); if (rm) rm.onclick = () => { removed = true; $('#fcur', m).textContent = 'El ticket se quitará al guardar.'; };
+  const d = $('#fdel', m); if (d) d.onclick = () => { if (!confirm('¿Eliminar este movimiento? No se puede deshacer.')) return; guard(async () => { await api.deleteFinEntry(id); if (e.receipt_path) await api.removeReceipt(e.receipt_path).catch(() => {}); m.querySelector('[data-close]').click(); await loadFin(); toast('Movimiento eliminado'); }); };
+  $('#ff', m).onsubmit = (ev) => {
+    ev.preventDefault(); const f = new FormData(ev.target); const err = $('#ferr', m);
+    const cents = parseEur(f.get('amount')); if (!(cents > 0)) return (err.textContent = 'Escribe un importe mayor que 0.');
+    const btn = ev.target.querySelector('button[type=submit]'); btn.disabled = true; err.textContent = '';
+    guard(async () => {
+      try {
+        let newPath = path; const file = f.get('photo');
+        if (removed) newPath = null;
+        if (file && file.size) { const blob = await compressImage(file); newPath = await api.uploadReceipt(blob); }
+        await api.saveFinEntry(id, { kind: f.get('kind'), amount_cents: cents, occurred_on: f.get('date'), category: f.get('category').trim(), note: f.get('note').trim() || null, recurring: !!f.get('recurring'), receipt_path: newPath });
+        if (e?.receipt_path && newPath !== e.receipt_path) await api.removeReceipt(e.receipt_path).catch(() => {});
+        m.querySelector('[data-close]').click(); await loadFin(); toast('Guardado');
+      } catch (er) { err.textContent = er.message && !/jwt/i.test(er.message) ? er.message : 'No se pudo guardar. Inténtalo de nuevo.'; btn.disabled = false; }
+    });
+  };
+}
+function openFinPlan(k, rows) {
+  const val = (kind, cat) => { const r = rows.find((x) => x.kind === kind && x.category === cat); return r ? (r.planned_cents / 100).toFixed(2).replace('.', ',') : ''; };
+  const cats = [...new Set([...FIN_G, ...rows.filter((r) => r.kind === 'gasto').map((r) => r.category)])];
+  const m = modal(`<form id="fp"><div class="head"><h2>Plan de ${esc(monthLabel(k))}</h2><button type="button" class="btn ghost sm" data-close>Cerrar</button></div>
+    <label>Ingresos previstos (€)<input name="i" inputmode="decimal" value="${val('ingreso', 'Ingresos')}" placeholder="0,00"></label>
+    <label>Objetivo de ahorro (€)<input name="a" inputmode="decimal" value="${val('ahorro', 'ahorro')}" placeholder="0,00"></label>
+    <h3>Presupuesto de gastos por categoría</h3>
+    ${cats.map((c, n) => `<label>${esc(c)}<input name="g${n}" data-cat="${esc(c)}" inputmode="decimal" value="${val('gasto', c)}" placeholder="0,00"></label>`).join('')}
+    <div class="err" id="ferr" role="alert"></div>
+    <div class="actions"><button type="button" class="btn ghost" id="fcopy">Copiar del mes anterior</button><button class="btn primary" type="submit">Guardar plan</button></div></form>`);
+  $('#fcopy', m).onclick = () => { const pk = addMonth(k, -1); const pr = S.fin.budgets.filter((b) => monthKey(b.month) === pk); if (!pr.length) return ($('#ferr', m).textContent = 'El mes anterior no tiene plan.'); const g = (kind, cat) => { const r = pr.find((x) => x.kind === kind && x.category === cat); return r ? (r.planned_cents / 100).toFixed(2).replace('.', ',') : ''; }; m.querySelector('[name=i]').value = g('ingreso', 'Ingresos'); m.querySelector('[name=a]').value = g('ahorro', 'ahorro'); m.querySelectorAll('[data-cat]').forEach((i) => { i.value = g('gasto', i.dataset.cat); }); };
+  $('#fp', m).onsubmit = (ev) => {
+    ev.preventDefault(); const err = $('#ferr', m); const out = [];
+    const take = (el, kind, cat) => { const s = el.value.trim(); if (!s) return true; const c = parseEur(s); if (!(c >= 0)) return false; out.push({ kind, category: cat, planned_cents: c }); return true; };
+    let ok = take(m.querySelector('[name=i]'), 'ingreso', 'Ingresos') && take(m.querySelector('[name=a]'), 'ahorro', 'ahorro');
+    m.querySelectorAll('[data-cat]').forEach((i) => { ok = take(i, 'gasto', i.dataset.cat) && ok; });
+    if (!ok) return (err.textContent = 'Revisa los importes: usa números como 120 o 120,50.');
+    guard(async () => { await api.saveFinBudgets(k + '-01', out); m.querySelector('[data-close]').click(); await loadFin(); toast('Plan guardado'); });
+  };
+}
+
 // ---------- Events ----------
 function bind() {
   const main = $('#main');
@@ -408,6 +535,7 @@ function bind() {
   const ex = $('#exp'); if (ex) ex.onclick = () => guard(async () => { const d = await api.exportAll(); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' })); a.download = 'sala-copia-' + today() + '.json'; document.body.appendChild(a); a.click(); a.remove(); toast('Copia descargada'); });
   const inv = $('#inv'); if (inv) inv.onsubmit = (e) => { e.preventDefault(); guard(async () => { const f = new FormData(inv); const r = await api.addInvite({ name: f.get('name').trim(), email: f.get('email').trim(), role: f.get('role') }); inv.reset(); toast(r && r.link ? 'No se pudo enviar el correo: comparte el enlace' : 'Invitación enviada por correo'); await loadEquipo(); if (r && r.link) showInviteLink(r.link); }); };
   if (S.view === 'equipo') loadEquipo();
+  if (S.view === 'finanzas') loadFin();
   enableDrag();
 }
 

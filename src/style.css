@@ -118,3 +118,14 @@ a:focus-visible,button:focus-visible,.link:focus-visible,.nav:focus-visible,.tas
 .modal:focus{outline:none}
 .empty{color:var(--mut)}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
+
+/* finanzas */
+.fhead{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0 14px}.fhead .grow{flex:1}.fmonth{margin:0 6px;text-transform:capitalize;font-size:18px}
+.fstats .stat small{display:block;margin-top:4px;font-size:12px}.neg{color:var(--bad)}.pos{color:var(--ok)}
+.frow{padding:8px 0}.flab{display:flex;justify-content:space-between;gap:10px;margin-bottom:5px;flex-wrap:wrap}
+.fbars{position:relative;display:grid;gap:3px}.fb{height:8px;border-radius:99px;min-width:0}.fb.prev{background:#4a5063}.fb.cur{background:var(--acc2)}.fb.cur.over{background:var(--bad)}
+.fmark{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--warn)}
+.flegend{display:flex;gap:16px;flex-wrap:wrap;color:var(--mut);font-size:12.5px;margin-bottom:6px}.lg{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}.lg.prev{background:#4a5063}.lg.cur{background:var(--acc2)}.lg.mk{background:var(--warn);width:3px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.btn.danger{color:var(--bad);border-color:rgba(226,122,105,.4)}
+tbody tr:focus-visible{outline:2px solid rgba(147,164,245,.7);outline-offset:-2px}

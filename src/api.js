@@ -46,7 +46,19 @@ const real = {
   async saveIdea(id, row) { const q = id ? sb.from('ideas').update(row).eq('id', id).select('id').single() : sb.from('ideas').insert(row).select('id').single(); const { data, error } = await q; if (error) throw error; return data.id; },
   async deleteIdea(id) { const { error } = await sb.from('ideas').delete().eq('id', id); if (error) throw error; },
   async rotateCal() { const { data, error } = await sb.rpc('rotate_calendar_token'); if (error) throw error; return cfg.url + '/functions/v1/ical?t=' + data; },
-  async exportAll() { const t = ['clients', 'tasks', 'ideas', 'deliveries', 'task_comments', 'activity', 'profiles']; const out = { exported_at: new Date().toISOString() }; for (const n of t) { const { data, error } = await sb.from(n).select('*'); if (error) throw error; out[n] = data; } return out; },
+  async exportAll() { const t = ['clients', 'tasks', 'ideas', 'deliveries', 'task_comments', 'activity', 'profiles', 'finance_entries', 'finance_budgets']; const out = { exported_at: new Date().toISOString() }; for (const n of t) { const { data, error } = await sb.from(n).select('*'); if (error) throw error; out[n] = data; } return out; },
+  async finEntries() { const { data, error } = await sb.from('finance_entries').select('*').order('occurred_on', { ascending: false }).order('created_at', { ascending: false }).limit(5000); if (error) throw error; return data; },
+  async saveFinEntry(id, row) { const q = id ? sb.from('finance_entries').update(row).eq('id', id) : sb.from('finance_entries').insert(row); const { error } = await q; if (error) throw error; },
+  async deleteFinEntry(id) { const { error } = await sb.from('finance_entries').delete().eq('id', id); if (error) throw error; },
+  async finBudgets() { const { data, error } = await sb.from('finance_budgets').select('*'); if (error) throw error; return data; },
+  async saveFinBudgets(month, rows) {
+    const del = await sb.from('finance_budgets').delete().eq('month', month); if (del.error) throw del.error;
+    const ins = rows.filter((r) => r.planned_cents > 0).map((r) => ({ month, ...r })); if (!ins.length) return;
+    const { error } = await sb.from('finance_budgets').insert(ins); if (error) throw error;
+  },
+  async uploadReceipt(blob) { const p = new Date().getFullYear() + '/' + uid() + '.jpg'; const { error } = await sb.storage.from('receipts').upload(p, blob, { contentType: 'image/jpeg', upsert: false }); if (error) throw error; return p; },
+  async removeReceipt(path) { await sb.storage.from('receipts').remove([path]); },
+  async receiptUrl(path) { const { data, error } = await sb.storage.from('receipts').createSignedUrl(path, 120); if (error) throw error; return data.signedUrl; },
   async people() { const { data, error } = await sb.rpc('people'); if (error) throw error; return data; },
   async invites() { const { data, error } = await sb.from('invites').select('*').order('created_at'); if (error) throw error; return data; },
   async addInvite(i) {
@@ -127,4 +139,11 @@ demo.deleteIdea = async (id) => localStorage.setItem('sala-ideas', JSON.stringif
 demo.rotateCal = async () => 'https://ejemplo.invalid/ical?t=demo2';
 demo.exportAll = async () => ({ demo: true });
 demo.calUrl = async () => 'https://ejemplo.invalid/ical?t=demo';
+const jl = (k) => JSON.parse(localStorage.getItem(k) || '[]');
+demo.finEntries = async () => jl('sala-fin');
+demo.saveFinEntry = async (id, row) => { const l = jl('sala-fin'); if (id) { const i = l.findIndex((x) => x.id === id); l[i] = { ...l[i], ...row }; } else l.unshift({ id: uid(), ...row }); localStorage.setItem('sala-fin', JSON.stringify(l)); };
+demo.deleteFinEntry = async (id) => localStorage.setItem('sala-fin', JSON.stringify(jl('sala-fin').filter((x) => x.id !== id)));
+demo.finBudgets = async () => jl('sala-finb');
+demo.saveFinBudgets = async (month, rows) => localStorage.setItem('sala-finb', JSON.stringify([...jl('sala-finb').filter((r) => r.month !== month), ...rows.filter((r) => r.planned_cents > 0).map((r) => ({ month, ...r }))]));
+demo.uploadReceipt = async () => null; demo.removeReceipt = async () => {}; demo.receiptUrl = async () => null;
 export const api = DEMO ? demo : real;
