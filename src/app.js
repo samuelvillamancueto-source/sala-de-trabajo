@@ -62,7 +62,8 @@ async function guard(fn) {
 window.addEventListener('unhandledrejection', (e) => { console.error(e.reason); toast(friendly(e.reason)); });
 
 // ---------- Login ----------
-function renderLogin(msg = '', signup = false) {
+function renderLogin(msg = '') {
+  const signup = false;
   $('#app').innerHTML = `
   <main class="login"><form class="card login-card" id="lf">
     <div class="brand big"><span class="dot"></span>Sala de Trabajo</div>
@@ -73,9 +74,8 @@ function renderLogin(msg = '', signup = false) {
     <div class="err" id="lerr">${esc(msg)}</div>
     <button class="btn primary" type="submit">${signup ? 'Crear cuenta' : 'Entrar'}</button>
     ${signup || DEMO ? '' : '<button class="link" type="button" id="forgot">He olvidado la contraseña</button>'}
-    <button class="link" type="button" id="swap">${signup ? 'Ya tengo cuenta' : 'Me han invitado: crear cuenta'}</button>
+    <p class="muted small">¿Aún no tienes cuenta? Un administrador te enviará una invitación por correo.</p>
   </form></main>`;
-  $('#swap').onclick = () => renderLogin('', !signup);
   const fg = $('#forgot'); if (fg) fg.onclick = async () => {
     const em = $('#lf').querySelector('[name=email]').value.trim();
     if (!em) return ($('#lerr').textContent = 'Escribe tu correo arriba y vuelve a pulsar.');
@@ -85,7 +85,7 @@ function renderLogin(msg = '', signup = false) {
     e.preventDefault();
     const f = new FormData(e.target);
     const btn = e.target.querySelector('button[type=submit]'); btn.disabled = true;
-    try { signup ? await api.signUp(f.get('email'), f.get('password')) : await api.signIn(f.get('email'), f.get('password')); await boot(); }
+    try { await api.signIn(f.get('email'), f.get('password')); await boot(); }
     catch (er) { $('#lerr').textContent = er.message; btn.disabled = false; }
   };
 }
@@ -243,12 +243,18 @@ function openIdea(id) {
     const tid = await api.createTask({ title: i.title, client_id: i.client_id, assigned_to: i.owner_id, brief: i.notes || '', reference_url: i.reference_url || '', created_by: S.me.id });
     await api.saveIdea(i.id, { task_id: tid, status: 'en_produccion' }); await done('Tarea creada y la idea pasa a En producción'); });
 }
+function showInviteLink(link) {
+  const box = document.createElement('div'); box.className = 'card'; box.setAttribute('role', 'alert');
+  box.innerHTML = '<p class="small">El correo automático no ha podido enviarse (límite del servicio gratuito). Pasa este enlace de un solo uso a la persona por un canal privado. Caduca pronto y no se vuelve a mostrar.</p><input readonly aria-label="Enlace de invitación" style="width:100%">';
+  const i = box.querySelector('input'); i.value = link; i.onclick = () => i.select();
+  const h = document.querySelector('#inv'); if (h) h.after(box);
+}
 function vEquipo() {
   return `<h1>Equipo</h1>
   <section><h2>Invitar a alguien</h2>
   <form class="card inline" id="inv"><input name="name" placeholder="Nombre" required><input name="email" type="email" placeholder="Correo" required>
   <select name="role"><option value="editor">Editor</option><option value="admin">Administrador</option><option value="agent">Cuenta de servicio (Instinct)</option></select><button class="btn primary">Invitar</button></form>
-  <p class="muted small">La persona crea su cuenta con ese correo. Hasta que no la crea, aparece como pendiente.</p></section>
+  <p class="muted small">Se envía un correo con un enlace para elegir contraseña. Hasta que la persona lo acepta, aparece como pendiente. La invitación caduca a los 14 días.</p></section>
   <section><h2>Copia de seguridad</h2><div class="card inline2"><p class="muted small">Descarga todo (tareas, ideas, clientes, entregas, comentarios y actividad) en un archivo. Además, la base de datos guarda una copia automática cada noche durante 14 días. El archivo no incluye contraseñas, pero sí datos de clientes: guárdalo en un sitio privado.</p><button class="btn" id="exp">Descargar copia (JSON)</button></div></section>
   <section><h2>Personas</h2><div class="card" id="plist">Cargando…</div></section>`;
 }
@@ -379,7 +385,7 @@ function bind() {
     if (e.target.id === 'ic') { S.ifilter.client = e.target.value; return render(); } if (e.target.id === 'is') { S.ifilter.status = e.target.value; return render(); } if (e.target.id === 'io') { S.ifilter.owner = e.target.value; return render(); } if (e.target.id === 'fw') { S.filter.who = e.target.value; render(); } if (e.target.id === 'fc') { S.filter.client = e.target.value; render(); } };
   const iq = $('#iq'); if (iq) iq.oninput = () => { S.ifilter.q = iq.value; const pos = iq.selectionStart; render(); const n = $('#iq'); n.focus(); n.setSelectionRange(pos, pos); };
   const ex = $('#exp'); if (ex) ex.onclick = () => guard(async () => { const d = await api.exportAll(); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' })); a.download = 'sala-copia-' + today() + '.json'; document.body.appendChild(a); a.click(); a.remove(); toast('Copia descargada'); });
-  const inv = $('#inv'); if (inv) inv.onsubmit = (e) => { e.preventDefault(); guard(async () => { const f = new FormData(inv); await api.addInvite({ name: f.get('name').trim(), email: f.get('email').trim(), role: f.get('role') }); inv.reset(); toast('Invitación creada'); loadEquipo(); }); };
+  const inv = $('#inv'); if (inv) inv.onsubmit = (e) => { e.preventDefault(); guard(async () => { const f = new FormData(inv); const r = await api.addInvite({ name: f.get('name').trim(), email: f.get('email').trim(), role: f.get('role') }); inv.reset(); toast(r && r.link ? 'No se pudo enviar el correo: comparte el enlace' : 'Invitación enviada por correo'); await loadEquipo(); if (r && r.link) showInviteLink(r.link); }); };
   if (S.view === 'equipo') loadEquipo();
   enableDrag();
 }

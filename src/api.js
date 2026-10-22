@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import cfg from './config.js';
 
-export const RECOVERY = typeof location !== 'undefined' && /type=recovery/.test(location.hash);
+export const RECOVERY = typeof location !== 'undefined' && /type=(recovery|invite)/.test(location.hash);
 export const DEMO = !cfg.url || !cfg.anonKey;
 const sb = DEMO ? null : createClient(cfg.url, cfg.anonKey);
 
@@ -25,11 +25,6 @@ const real = {
     if (error) throw new Error('No se pudo enviar el correo. Espera unos minutos y reinténtalo.');
   },
   async setPassword(pw) { const { error } = await sb.auth.updateUser({ password: pw }); if (error) throw new Error(error.message.includes('least') ? 'La contraseña debe tener al menos 10 caracteres.' : 'No se pudo guardar la contraseña.'); },
-  async signUp(email, password) {
-    const { data, error } = await sb.auth.signUp({ email, password, options: { emailRedirectTo: location.origin + location.pathname } });
-    if (error) throw new Error(error.message.includes('invitado') ? error.message : 'No se pudo crear la cuenta. ¿Te ha invitado un administrador con este correo?');
-    if (!data.session) { try { await this.signIn(email, password); } catch { throw new Error('Si ya habías creado la cuenta, usa "Ya tengo cuenta" o "He olvidado la contraseña". Si es nueva, confirma el correo que te hemos enviado.'); } }
-  },
   signOut: () => sb.auth.signOut(),
   async tasks() { const { data, error } = await sb.from('tasks').select('*').order('due', { nullsFirst: false }); if (error) throw error; return data; },
   async createTask(t) { const { data, error } = await sb.from('tasks').insert(t).select('id').single(); if (error) throw error; return data.id; },
@@ -54,7 +49,12 @@ const real = {
   async exportAll() { const t = ['clients', 'tasks', 'ideas', 'deliveries', 'task_comments', 'activity', 'profiles']; const out = { exported_at: new Date().toISOString() }; for (const n of t) { const { data, error } = await sb.from(n).select('*'); if (error) throw error; out[n] = data; } return out; },
   async people() { const { data, error } = await sb.rpc('people'); if (error) throw error; return data; },
   async invites() { const { data, error } = await sb.from('invites').select('*').order('created_at'); if (error) throw error; return data; },
-  async addInvite(i) { const { error } = await sb.from('invites').upsert({ ...i, email: i.email.toLowerCase() }); if (error) throw error; },
+  async addInvite(i) {
+    const { data, error } = await sb.functions.invoke('invite-user', { body: { ...i, email: i.email.toLowerCase() } });
+    if (error) { let m = 'No se pudo enviar la invitación.'; try { const j = await error.context.json(); if (j.error) m = j.error; } catch {} throw new Error(m); }
+    if (!data || !data.ok) throw new Error('No se pudo enviar la invitación.');
+    return data;
+  },
   async removeInvite(email) { const { error } = await sb.from('invites').delete().eq('email', email); if (error) throw error; },
   async profiles() { const { data, error } = await sb.from('profiles').select('*').order('created_at'); if (error) throw error; return data; },
   async setProfile(id, patch) { const { error } = await sb.from('profiles').update(patch).eq('id', id); if (error) throw error; },
