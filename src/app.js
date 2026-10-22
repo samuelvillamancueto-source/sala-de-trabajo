@@ -88,7 +88,7 @@ function card(t) {
 function board(list) {
   return `<div class="board">${Object.entries(STATUS).map(([k, l]) => {
     const col = list.filter((t) => t.status === k);
-    return `<section class="col"><h3>${l}<b>${col.length}</b></h3>${col.map(card).join('') || '<p class="empty">Nada aquí</p>'}</section>`;
+    return `<section class="col" data-status="${k}"><h3>${l}<b>${col.length}</b></h3>${col.map(card).join('') || '<p class="empty">Nada aquí</p>'}</section>`;
   }).join('')}</div>`;
 }
 function listView(list) {
@@ -268,6 +268,7 @@ function newClient() {
 function bind() {
   const main = $('#main');
   main.onclick = (e) => {
+    if (S.dragged) return;
     const o = e.target.closest('[data-open]'); if (o) return openTask(o.dataset.open);
     if (e.target.closest('[data-new]')) return openTask(null);
     if (e.target.closest('[data-newclient]')) return newClient();
@@ -281,6 +282,61 @@ function bind() {
   main.onchange = (e) => { if (e.target.id === 'fw') { S.filter.who = e.target.value; render(); } if (e.target.id === 'fc') { S.filter.client = e.target.value; render(); } };
   const inv = $('#inv'); if (inv) inv.onsubmit = (e) => { e.preventDefault(); guard(async () => { const f = new FormData(inv); await api.addInvite({ name: f.get('name').trim(), email: f.get('email').trim(), role: f.get('role') }); inv.reset(); toast('Invitación creada'); loadEquipo(); }); };
   if (S.view === 'equipo') loadEquipo();
+  enableDrag();
+}
+
+// Arrastrar tarjetas entre columnas (ratón y dedo; en móvil, mantén pulsado un momento)
+function enableDrag() {
+  const board = $('.board'); if (!board) return;
+  let st = null;
+  const colAt = (x, y) => document.elementFromPoint(x, y)?.closest('.col');
+  const clear = () => document.querySelectorAll('.col.over').forEach((c) => c.classList.remove('over'));
+  const begin = (e) => {
+    st.on = true; const r = st.card.getBoundingClientRect();
+    st.ghost = st.card.cloneNode(true); st.ghost.className += ' ghost';
+    st.ghost.style.cssText = `position:fixed;left:${r.left}px;top:${r.top}px;width:${r.width}px;pointer-events:none;z-index:50`;
+    st.dx = e.clientX - r.left; st.dy = e.clientY - r.top;
+    document.body.appendChild(st.ghost); st.card.classList.add('dragging');
+    board.style.scrollSnapType = 'none';
+    st.lx = e.clientX; st.ly = e.clientY;
+    st.auto = setInterval(() => { const br = board.getBoundingClientRect(); const d = st.lx > br.right - 50 ? 12 : st.lx < br.left + 50 ? -12 : 0; if (d) { board.scrollLeft += d; clear(); colAt(st.lx, st.ly)?.classList.add('over'); } }, 16);
+    try { board.setPointerCapture(st.id); } catch (_) {}
+  };
+  const move = (e) => {
+    if (!st || e.pointerId !== st.id) return;
+    if (!st.on) {
+      const d = Math.hypot(e.clientX - st.x, e.clientY - st.y);
+      if (e.pointerType === 'mouse' && d > 6) begin(e);
+      else if (e.pointerType !== 'mouse' && d > 10 && !st.timerDone) { clearTimeout(st.timer); st = null; return; }
+      if (!st || !st.on) return;
+    }
+    e.preventDefault();
+    st.ghost.style.left = e.clientX - st.dx + 'px'; st.ghost.style.top = e.clientY - st.dy + 'px';
+    clear(); colAt(e.clientX, e.clientY)?.classList.add('over');
+    st.lx = e.clientX; st.ly = e.clientY;
+  };
+  const end = async (e) => {
+    if (!st || e.pointerId !== st.id) return;
+    clearTimeout(st.timer); clearInterval(st.auto); board.style.scrollSnapType = ''; const s = st; st = null;
+    if (!s.on) return;
+    s.ghost.remove(); s.card.classList.remove('dragging'); clear();
+    S.dragged = true; setTimeout(() => { S.dragged = false; }, 50);
+    const col = e.type === 'pointercancel' ? null : colAt(e.clientX, e.clientY);
+    const to = col?.dataset.status; const t = S.tasks.find((x) => x.id === s.card.dataset.open);
+    if (!to || !t || t.status === to) return;
+    guard(async () => {
+      try { if (isAdmin()) await api.updateTask(t.id, { status: to }); else await api.editorStatus(t.id, to); toast('Movida a ' + STATUS[to]); }
+      finally { await refresh(); render(); }
+    });
+  };
+  board.addEventListener('pointerdown', (e) => {
+    const card = e.target.closest('.task'); if (!card || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    st = { id: e.pointerId, card, x: e.clientX, y: e.clientY, on: false, timerDone: false };
+    if (e.pointerType !== 'mouse') st.timer = setTimeout(() => { if (st) { st.timerDone = true; navigator.vibrate?.(15); begin(e); } }, 350);
+  });
+  board.addEventListener('pointermove', move); board.addEventListener('pointerup', end); board.addEventListener('pointercancel', end);
+  board.addEventListener('touchmove', (e) => { if (st?.on) e.preventDefault(); }, { passive: false });
+  board.addEventListener('dragstart', (e) => e.preventDefault());
 }
 
 boot().catch((e) => { console.error(e); renderLogin('No se pudo conectar. Recarga la página.'); });
