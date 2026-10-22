@@ -9,7 +9,10 @@ const today = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/M
 const late = (t) => t.due && t.status !== 'listo' && t.due < today();
 const safeUrl = (u) => (/^https?:\/\//i.test(u || '') ? u : '');
 
-const S = { me: null, tasks: [], clients: [], people: [], view: 'resumen', mode: 'tablero', filter: { who: '', client: '' }, toast: '' };
+const IDEA_ST = { nueva: 'Nueva', aprobada: 'Aprobada', en_produccion: 'En producción', publicada: 'Publicada', descartada: 'Descartada' };
+const IDEA_KIND = { viral: 'Viral', tendencia: 'Tendencia / meme', copy: 'Copy', campana: 'Ads / email / grupos', otro: 'Otro' };
+const IDEA_FMT = { reel: 'Reel', tiktok: 'TikTok', story: 'Story', carrusel: 'Carrusel', post: 'Post', meme: 'Meme', email: 'Email', anuncio: 'Anuncio', otro: 'Otro' };
+const S = { ideas: [], ifilter: { client: '', status: '', owner: '', q: '' }, me: null, tasks: [], clients: [], people: [], view: 'resumen', mode: 'tablero', filter: { who: '', client: '' }, toast: '' };
 const isAdmin = () => S.me?.role === 'admin';
 const pname = (id) => S.people.find((p) => p.id === id)?.name || 'Sin asignar';
 const cname = (id) => S.clients.find((c) => c.id === id)?.name || '';
@@ -33,6 +36,7 @@ async function boot() {
 }
 async function refresh() {
   [S.tasks, S.clients, S.people] = await Promise.all([api.tasks(), api.clients(), api.people()]);
+  S.ideas = isAdmin() ? await api.ideas().catch(() => []) : [];
 }
 function toast(m) { S.toast = m; const t = $('#toast'); if (t) { t.textContent = m; t.classList.add('on'); setTimeout(() => t.classList.remove('on'), 2600); } }
 async function guard(fn) { try { await fn(); } catch (e) { toast(e.message || 'Algo salió mal.'); } }
@@ -69,12 +73,12 @@ function renderLogin(msg = '', signup = false) {
 // ---------- Layout ----------
 function nav() {
   const items = isAdmin()
-    ? [['resumen', 'Resumen'], ['tareas', 'Tareas'], ['mis', 'Mis encargos'], ['clientes', 'Clientes'], ['equipo', 'Equipo']]
+    ? [['resumen', 'Resumen'], ['tareas', 'Tareas'], ['mis', 'Mis encargos'], ['ideas', 'Ideas'], ['clientes', 'Clientes'], ['equipo', 'Equipo']]
     : [['mis', 'Mis encargos']];
   return items.map(([k, l]) => `<a href="#/${k}" class="nav ${S.view === k ? 'on' : ''}" data-v="${k}">${l}</a>`).join('');
 }
 function render() {
-  const body = { resumen: vResumen, tareas: vTareas, mis: vMis, clientes: vClientes, equipo: vEquipo }[S.view] || vMis;
+  const body = { resumen: vResumen, tareas: vTareas, mis: vMis, clientes: vClientes, equipo: vEquipo, ideas: vIdeas }[S.view] || vMis;
   $('#app').innerHTML = `
   <div class="shell">
     <header class="top"><div class="brand"><span class="dot"></span>Sala de Trabajo</div>
@@ -174,6 +178,49 @@ function vMis() {
 function vClientes() {
   return `<div class="head"><h1>Clientes</h1><button class="btn primary" data-newclient>+ Nuevo cliente</button></div>
   <div class="grid">${S.clients.map((c) => { const n = S.tasks.filter((t) => t.client_id === c.id && t.status !== 'listo').length; return `<article class="card client" data-client="${c.id}" tabindex="0"><span class="chip">${c.kind === 'recurrente' ? 'Recurrente' : 'Puntual'}</span><h3>${esc(c.name)}</h3><p class="muted">${n} tareas abiertas</p></article>`; }).join('') || '<p class="empty big">Añade tu primer cliente.</p>'}</div>`;
+}
+function vIdeas() {
+  const f = S.ifilter; const q = f.q.trim().toLowerCase();
+  const list = S.ideas.filter((i) => (!f.client || (f.client === 'none' ? !i.client_id : i.client_id === f.client)) && (!f.status || i.status === f.status) && (!f.owner || (f.owner === 'none' ? !i.owner_id : i.owner_id === f.owner)) && (!q || (i.title + ' ' + i.notes).toLowerCase().includes(q)));
+  const people = S.people.filter((p) => p.role !== 'agent');
+  const count = (s) => S.ideas.filter((i) => i.status === s).length;
+  const card = (i) => `<article class="card idea" data-idea="${i.id}" tabindex="0"><div class="chips"><span class="chip">${esc(cname(i.client_id) || 'Sin cliente')}</span><span class="chip">${IDEA_FMT[i.format]}</span><span class="chip">${IDEA_KIND[i.kind]}</span></div>
+    <h3>${esc(i.title)}</h3>${i.notes ? `<p class="muted clamp">${esc(i.notes)}</p>` : ''}
+    <div class="imeta"><span>Responsable: <b>${esc(pname(i.owner_id))}</b></span><span>Propone: ${esc(pname(i.proposed_by))}</span></div>
+    <div class="irow">${safeUrl(i.reference_url) ? `<a href="${esc(i.reference_url)}" target="_blank" rel="noopener noreferrer" data-link>Referencia</a>` : '<span></span>'}
+    <select data-istatus="${i.id}" class="ist is-${i.status}" aria-label="Estado">${opts(IDEA_ST, i.status)}</select></div></article>`;
+  return `<div class="head"><h1>Ideas</h1><button class="btn primary" data-newidea>+ Nueva idea</button></div>
+  <p class="muted small">${Object.entries(IDEA_ST).map(([k, l]) => `${l}: ${count(k)}`).join(' · ')}</p>
+  <div class="bar2 ibar"><input id="iq" type="search" placeholder="Buscar idea…" value="${esc(f.q)}">
+    <select id="ic"><option value="">Todos los clientes</option><option value="none">Sin cliente</option>${S.clients.map((c) => `<option value="${c.id}" ${f.client === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
+    <select id="is"><option value="">Todos los estados</option>${opts(IDEA_ST, f.status)}</select>
+    <select id="io"><option value="">Todos los responsables</option><option value="none">Sin responsable</option>${people.map((p) => `<option value="${p.id}" ${f.owner === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div>
+  <div class="grid igrid">${list.map(card).join('') || '<p class="empty">Aún no hay ideas con estos filtros. Pulsa "+ Nueva idea".</p>'}</div>`;
+}
+function openIdea(id) {
+  const i = id ? S.ideas.find((x) => x.id === id) : null;
+  const people = S.people.filter((p) => p.role !== 'agent');
+  const m = modal(`<form id="if"><div class="head"><h2>${i ? 'Editar idea' : 'Nueva idea'}</h2><button type="button" class="btn ghost sm" data-close>Cerrar</button></div>
+    <label>Idea<input name="title" required value="${esc(i?.title)}" placeholder="Ej: meme del lunes con la plantilla del momento"></label>
+    <div class="cols"><label>Cliente<select name="client_id"><option value="">Sin cliente</option>${S.clients.map((c) => `<option value="${c.id}" ${i?.client_id === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
+    <label>Tipo<select name="kind">${opts(IDEA_KIND, i?.kind || 'viral')}</select></label>
+    <label>Formato<select name="format">${opts(IDEA_FMT, i?.format || 'reel')}</select></label></div>
+    <div class="cols"><label>Estado<select name="status">${opts(IDEA_ST, i?.status || 'nueva')}</select></label>
+    <label>Responsable<select name="owner_id"><option value="">Sin responsable</option>${people.map((p) => `<option value="${p.id}" ${(i ? i.owner_id : '') === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
+    <label>Quién la propone<select name="proposed_by">${people.map((p) => `<option value="${p.id}" ${(i ? i.proposed_by : S.me.id) === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label></div>
+    <label>Enlace de referencia<input name="reference_url" type="url" value="${esc(i?.reference_url)}" placeholder="https://"></label>
+    <label>Notas (guion, copy, cómo se haría)<textarea name="notes" rows="5">${esc(i?.notes)}</textarea></label>
+    <p class="muted small">No guardes aquí contraseñas ni datos de dinero.</p>
+    <div class="actions">${i ? '<span><button type="button" class="btn danger" id="idel">Eliminar</button> <button type="button" class="btn ghost" id="itask">Pasar a tarea</button></span>' : '<span></span>'}<button class="btn primary">Guardar</button></div></form>`);
+  const done = async (msg) => { await refresh(); m.remove(); render(); toast(msg); };
+  $('#if', m).onsubmit = (e) => { e.preventDefault(); guard(async () => { const f = new FormData(e.target);
+    const row = { title: f.get('title').trim(), client_id: f.get('client_id') || null, kind: f.get('kind'), format: f.get('format'), status: f.get('status'), owner_id: f.get('owner_id') || null, proposed_by: f.get('proposed_by') || S.me.id, reference_url: f.get('reference_url').trim(), notes: f.get('notes') };
+    await api.saveIdea(i?.id, row); await done('Idea guardada'); }); };
+  const del = $('#idel', m); if (del) del.onclick = () => { if (confirm('¿Eliminar esta idea?')) guard(async () => { await api.deleteIdea(i.id); await done('Idea eliminada'); }); };
+  const tk = $('#itask', m); if (tk) tk.onclick = () => guard(async () => {
+    if (i.task_id) return toast('Esta idea ya tiene tarea.');
+    const tid = await api.createTask({ title: i.title, client_id: i.client_id, assigned_to: i.owner_id, brief: i.notes || '', reference_url: i.reference_url || '', created_by: S.me.id });
+    await api.saveIdea(i.id, { task_id: tid, status: 'en_produccion' }); await done('Tarea creada y la idea pasa a En producción'); });
 }
 function vEquipo() {
   return `<h1>Equipo</h1>
@@ -292,6 +339,9 @@ function bind() {
   const main = $('#main');
   main.onclick = (e) => {
     if (S.dragged) return;
+    if (e.target.closest('[data-link]') || e.target.closest('[data-istatus]')) return;
+    if (e.target.closest('[data-newidea]')) return openIdea(null);
+    const id = e.target.closest('[data-idea]'); if (id) return openIdea(id.dataset.idea);
     const o = e.target.closest('[data-open]'); if (o) return openTask(o.dataset.open);
     if (e.target.closest('[data-new]')) return openTask(null);
     if (e.target.closest('[data-newclient]')) return newClient();
@@ -301,8 +351,11 @@ function bind() {
     const a = e.target.closest('[data-active]'); if (a) { const [id, v] = a.dataset.active.split('|'); return guard(async () => { await api.setProfile(id, { active: v === '1' }); loadEquipo(); }); }
     const ri = e.target.closest('[data-rminv]'); if (ri) return guard(async () => { await api.removeInvite(ri.dataset.rminv); loadEquipo(); });
   };
-  main.onkeydown = (e) => { if (e.key === 'Enter') { const o = e.target.closest('[data-open]'); if (o) openTask(o.dataset.open); const c = e.target.closest('[data-client]'); if (c) openClient(c.dataset.client); } };
-  main.onchange = (e) => { if (e.target.id === 'fw') { S.filter.who = e.target.value; render(); } if (e.target.id === 'fc') { S.filter.client = e.target.value; render(); } };
+  main.onkeydown = (e) => { if (e.key === 'Enter') { const idc = e.target.closest('[data-idea]'); if (idc) openIdea(idc.dataset.idea); const o = e.target.closest('[data-open]'); if (o) openTask(o.dataset.open); const c = e.target.closest('[data-client]'); if (c) openClient(c.dataset.client); } };
+  main.onchange = (e) => {
+    const is = e.target.dataset?.istatus; if (is) return guard(async () => { await api.saveIdea(is, { status: e.target.value }); await refresh(); render(); toast('Estado guardado'); });
+    if (e.target.id === 'ic') { S.ifilter.client = e.target.value; return render(); } if (e.target.id === 'is') { S.ifilter.status = e.target.value; return render(); } if (e.target.id === 'io') { S.ifilter.owner = e.target.value; return render(); } if (e.target.id === 'fw') { S.filter.who = e.target.value; render(); } if (e.target.id === 'fc') { S.filter.client = e.target.value; render(); } };
+  const iq = $('#iq'); if (iq) iq.oninput = () => { S.ifilter.q = iq.value; const pos = iq.selectionStart; render(); const n = $('#iq'); n.focus(); n.setSelectionRange(pos, pos); };
   const inv = $('#inv'); if (inv) inv.onsubmit = (e) => { e.preventDefault(); guard(async () => { const f = new FormData(inv); await api.addInvite({ name: f.get('name').trim(), email: f.get('email').trim(), role: f.get('role') }); inv.reset(); toast('Invitación creada'); loadEquipo(); }); };
   if (S.view === 'equipo') loadEquipo();
   enableDrag();

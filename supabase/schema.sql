@@ -311,3 +311,27 @@ begin
 end $$;
 revoke all on function public.my_calendar_token() from public, anon;
 grant execute on function public.my_calendar_token() to authenticated;
+create table if not exists public.ideas (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  client_id uuid references public.clients(id) on delete set null,
+  kind text not null default 'viral' check (kind in ('viral','tendencia','copy','campana','otro')),
+  format text not null default 'reel' check (format in ('reel','tiktok','story','carrusel','post','meme','email','anuncio','otro')),
+  status text not null default 'nueva' check (status in ('nueva','aprobada','en_produccion','publicada','descartada')),
+  owner_id uuid references public.profiles(id) on delete set null,
+  proposed_by uuid references public.profiles(id) on delete set null default auth.uid(),
+  reference_url text default '',
+  notes text default '',
+  task_id uuid references public.tasks(id) on delete set null,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+create index if not exists ideas_client on public.ideas(client_id);
+alter table public.ideas enable row level security;
+drop policy if exists ideas_admin on public.ideas;
+create policy ideas_admin on public.ideas for all using (public.is_admin()) with check (public.is_admin());
+drop policy if exists ideas_agent_read on public.ideas;
+create policy ideas_agent_read on public.ideas for select using (public.is_agent());
+create or replace function public.ideas_touch() returns trigger language plpgsql as $$ begin new.updated_at = now(); return new; end $$;
+drop trigger if exists ideas_touch on public.ideas;
+create trigger ideas_touch before update on public.ideas for each row execute function public.ideas_touch();

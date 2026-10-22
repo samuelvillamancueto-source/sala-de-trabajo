@@ -47,6 +47,9 @@ const real = {
   async clientPrivate(id) { const [p, b] = await Promise.all([sb.from('client_private').select('*').eq('client_id', id).maybeSingle(), sb.from('client_billing').select('*').eq('client_id', id).maybeSingle()]); return { ...(p.data || {}), billing: b.data || {} }; },
   async saveClientPrivate(id, priv, billing) { const a = await sb.from('client_private').upsert({ client_id: id, ...priv }); if (a.error) throw a.error; const b = await sb.from('client_billing').upsert({ client_id: id, ...billing }); if (b.error) throw b.error; },
   async calUrl() { const { data, error } = await sb.rpc('my_calendar_token'); if (error) throw error; return cfg.url + '/functions/v1/ical?t=' + data; },
+  async ideas() { const { data, error } = await sb.from('ideas').select('*').order('created_at', { ascending: false }); if (error) throw error; return data; },
+  async saveIdea(id, row) { const q = id ? sb.from('ideas').update(row).eq('id', id).select('id').single() : sb.from('ideas').insert(row).select('id').single(); const { data, error } = await q; if (error) throw error; return data.id; },
+  async deleteIdea(id) { const { error } = await sb.from('ideas').delete().eq('id', id); if (error) throw error; },
   async people() { const { data, error } = await sb.rpc('people'); if (error) throw error; return data; },
   async invites() { const { data, error } = await sb.from('invites').select('*').order('created_at'); if (error) throw error; return data; },
   async addInvite(i) { const { error } = await sb.from('invites').upsert({ ...i, email: i.email.toLowerCase() }); if (error) throw error; },
@@ -116,5 +119,8 @@ const demo = {
 };
 
 demo.resetPassword = async () => {}; demo.setPassword = async () => {};
+demo.ideas = async () => JSON.parse(localStorage.getItem('sala-ideas') || '[]');
+demo.saveIdea = async (id, row) => { const l = await demo.ideas(); const i = l.findIndex((x) => x.id === id); const n = { id: id || uid(), created_at: new Date().toISOString(), ...(i >= 0 ? l[i] : {}), ...row }; if (i >= 0) l[i] = n; else l.unshift(n); localStorage.setItem('sala-ideas', JSON.stringify(l)); return n.id; };
+demo.deleteIdea = async (id) => localStorage.setItem('sala-ideas', JSON.stringify((await demo.ideas()).filter((x) => x.id !== id)));
 demo.calUrl = async () => 'https://ejemplo.invalid/ical?t=demo';
 export const api = DEMO ? demo : real;
