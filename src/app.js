@@ -1,4 +1,4 @@
-import { api, DEMO } from './api.js';
+import { api, DEMO, RECOVERY } from './api.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -14,7 +14,15 @@ const isAdmin = () => S.me?.role === 'admin';
 const pname = (id) => S.people.find((p) => p.id === id)?.name || 'Sin asignar';
 const cname = (id) => S.clients.find((c) => c.id === id)?.name || '';
 
+function renderNewPass(msg = '') {
+  $('#app').innerHTML = `<main class="login"><form class="card login-card" id="nf"><div class="brand big"><span class="dot"></span>Sala de Trabajo</div>
+    <p class="muted">Elige tu nueva contraseña (mínimo 10 caracteres).</p>
+    <label>Nueva contraseña<input name="p" type="password" required minlength="10" autocomplete="new-password"></label>
+    <div class="err" id="lerr">${esc(msg)}</div><button class="btn primary" type="submit">Guardar y entrar</button></form></main>`;
+  $('#nf').onsubmit = async (e) => { e.preventDefault(); try { await api.setPassword(new FormData(e.target).get('p')); history.replaceState(null, '', location.pathname); await boot(); } catch (er) { $('#lerr').textContent = er.message; } };
+}
 async function boot() {
+  if (RECOVERY && !S.recovered) { S.recovered = true; await api.me(); return renderNewPass(); }
   S.me = await api.me();
   if (!S.me) return renderLogin();
   if (!S.me.active) { await api.signOut(); return renderLogin('Tu cuenta está desactivada.'); }
@@ -40,9 +48,15 @@ function renderLogin(msg = '', signup = false) {
     <label>Contraseña<input name="password" type="password" required minlength="8" autocomplete="${signup ? 'new-password' : 'current-password'}"></label>
     <div class="err" id="lerr">${esc(msg)}</div>
     <button class="btn primary" type="submit">${signup ? 'Crear cuenta' : 'Entrar'}</button>
+    ${signup || DEMO ? '' : '<button class="link" type="button" id="forgot">He olvidado la contraseña</button>'}
     <button class="link" type="button" id="swap">${signup ? 'Ya tengo cuenta' : 'Me han invitado: crear cuenta'}</button>
   </form></main>`;
   $('#swap').onclick = () => renderLogin('', !signup);
+  const fg = $('#forgot'); if (fg) fg.onclick = async () => {
+    const em = $('#lf').querySelector('[name=email]').value.trim();
+    if (!em) return ($('#lerr').textContent = 'Escribe tu correo arriba y vuelve a pulsar.');
+    try { await api.resetPassword(em); $('#lerr').textContent = 'Si el correo tiene cuenta, te llegará un enlace para elegir contraseña (revisa spam).'; } catch (er) { $('#lerr').textContent = er.message; }
+  };
   $('#lf').onsubmit = async (e) => {
     e.preventDefault();
     const f = new FormData(e.target);

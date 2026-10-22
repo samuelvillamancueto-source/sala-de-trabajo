@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import cfg from './config.js';
 
+export const RECOVERY = typeof location !== 'undefined' && /type=recovery/.test(location.hash);
 export const DEMO = !cfg.url || !cfg.anonKey;
 const sb = DEMO ? null : createClient(cfg.url, cfg.anonKey);
 
@@ -19,10 +20,15 @@ const real = {
     const { error } = await sb.auth.signInWithPassword({ email, password });
     if (error) throw new Error('Correo o contraseña incorrectos.');
   },
+  async resetPassword(email) {
+    const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+    if (error) throw new Error('No se pudo enviar el correo. Espera unos minutos y reinténtalo.');
+  },
+  async setPassword(pw) { const { error } = await sb.auth.updateUser({ password: pw }); if (error) throw new Error(error.message.includes('least') ? 'La contraseña debe tener al menos 10 caracteres.' : 'No se pudo guardar la contraseña.'); },
   async signUp(email, password) {
     const { data, error } = await sb.auth.signUp({ email, password });
     if (error) throw new Error(error.message.includes('invitado') ? error.message : 'No se pudo crear la cuenta. ¿Te ha invitado un administrador con este correo?');
-    if (!data.session) await this.signIn(email, password);
+    if (!data.session) { try { await this.signIn(email, password); } catch { throw new Error('Si ya habías creado la cuenta, usa "Ya tengo cuenta" o "He olvidado la contraseña". Si es nueva, confirma el correo que te hemos enviado.'); } }
   },
   signOut: () => sb.auth.signOut(),
   async tasks() { const { data, error } = await sb.from('tasks').select('*').order('due', { nullsFirst: false }); if (error) throw error; return data; },
@@ -109,5 +115,6 @@ const demo = {
   async addComment(task_id, author, body, for_client = false) { const s = st(); s.comments.push({ id: uid(), task_id, author, body, for_client, created_at: new Date().toISOString() }); save(s); },
 };
 
+demo.resetPassword = async () => {}; demo.setPassword = async () => {};
 demo.calUrl = async () => 'https://ejemplo.invalid/ical?t=demo';
 export const api = DEMO ? demo : real;
