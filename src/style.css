@@ -105,3 +105,8 @@ th{color:var(--mut)}td{border-top-color:var(--line)}tbody tr:hover{background:va
 ::-webkit-scrollbar{height:10px;width:10px}::-webkit-scrollbar-thumb{background:#2c3240;border-radius:99px}::-webkit-scrollbar-track{background:transparent}
 .login{background:radial-gradient(700px 400px at 50% 0,#1a1f2c 0,transparent 70%)}
 
+
+.grip{margin-left:auto;color:#6d7383;font-size:15px;letter-spacing:-2px;padding:2px 8px;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;line-height:1;border-radius:6px}.grip:hover{color:var(--ink);background:var(--card3)}
+.task .row{align-items:center}.task.idea{display:block}.task.idea h4{margin:8px 0 4px}.task.idea .imeta{margin-top:6px}.task.idea .irow{margin-top:8px}
+.task a,.task select{-webkit-touch-callout:none}
+.irow{flex-wrap:wrap}.irow select.ist{max-width:100%;min-width:0}

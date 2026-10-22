@@ -106,7 +106,7 @@ window.addEventListener('hashchange', () => { if (!S.me) return; const v = locat
 function card(t) {
   const link = t.round > 0;
   return `<article class="task ${late(t) ? 'late' : ''}" data-open="${t.id}" tabindex="0">
-    <div class="row"><span class="chip p-${t.priority}">${PRIO[t.priority]}</span>${t.approved ? '<span class="chip ok">Aprobado</span>' : ''}</div>
+    <div class="row"><span class="chip p-${t.priority}">${PRIO[t.priority]}</span>${t.approved ? '<span class="chip ok">Aprobado</span>' : ''}<span class="grip" title="Arrastra para cambiar de estado" aria-hidden="true">⋮⋮</span></div>
     <h4>${esc(t.title)}</h4>
     <div class="meta">${t.client_id ? `<span>${esc(cname(t.client_id))}</span>` : ''}<span class="${late(t) ? 'bad' : ''}">${fmt(t.due)}</span></div>
     <div class="foot"><span class="av">${esc(pname(t.assigned_to)[0] || '?')}</span><span>${esc(pname(t.assigned_to))}</span>${link ? `<span class="chip">Ronda ${t.round}</span>` : ''}</div>
@@ -184,18 +184,18 @@ function vIdeas() {
   const list = S.ideas.filter((i) => (!f.client || (f.client === 'none' ? !i.client_id : i.client_id === f.client)) && (!f.status || i.status === f.status) && (!f.owner || (f.owner === 'none' ? !i.owner_id : i.owner_id === f.owner)) && (!q || (i.title + ' ' + i.notes).toLowerCase().includes(q)));
   const people = S.people.filter((p) => p.role !== 'agent');
   const count = (s) => S.ideas.filter((i) => i.status === s).length;
-  const card = (i) => `<article class="card idea" data-idea="${i.id}" tabindex="0"><div class="chips"><span class="chip">${esc(cname(i.client_id) || 'Sin cliente')}</span><span class="chip">${IDEA_FMT[i.format]}</span><span class="chip">${IDEA_KIND[i.kind]}</span></div>
-    <h3>${esc(i.title)}</h3>${i.notes ? `<p class="muted clamp">${esc(i.notes)}</p>` : ''}
-    <div class="imeta"><span>Responsable: <b>${esc(pname(i.owner_id))}</b></span><span>Propone: ${esc(pname(i.proposed_by))}</span></div>
+  const card = (i) => `<article class="task idea" data-idea="${i.id}" tabindex="0"><div class="row"><span class="chip">${esc(cname(i.client_id) || 'Sin cliente')}</span><span class="chip">${IDEA_FMT[i.format]}</span><span class="grip" title="Arrastra para cambiar de estado" aria-hidden="true">⋮⋮</span></div>
+    <h4>${esc(i.title)}</h4>${i.notes ? `<p class="muted clamp">${esc(i.notes)}</p>` : ''}
+    <div class="imeta"><span>Responsable: <b>${esc(pname(i.owner_id))}</b></span><span>Propone: ${esc(pname(i.proposed_by))}</span><span>${IDEA_KIND[i.kind]}</span></div>
     <div class="irow">${safeUrl(i.reference_url) ? `<a href="${esc(i.reference_url)}" target="_blank" rel="noopener noreferrer" data-link>Referencia</a>` : '<span></span>'}
     <select data-istatus="${i.id}" class="ist is-${i.status}" aria-label="Estado">${opts(IDEA_ST, i.status)}</select></div></article>`;
+  const ideaBoard = `<div class="board iboard" data-kind="idea">${Object.entries(IDEA_ST).map(([k, l]) => { const col = list.filter((i) => i.status === k); return `<section class="col" data-status="${k}"><h3>${l}<b>${col.length}</b></h3>${col.map(card).join('') || '<p class="empty">Nada aquí</p>'}</section>`; }).join('')}</div>`;
   return `<div class="head"><h1>Ideas</h1><button class="btn primary" data-newidea>+ Nueva idea</button></div>
-  <p class="muted small">${Object.entries(IDEA_ST).map(([k, l]) => `${l}: ${count(k)}`).join(' · ')}</p>
   <div class="bar2 ibar"><input id="iq" type="search" placeholder="Buscar idea…" value="${esc(f.q)}">
     <select id="ic"><option value="">Todos los clientes</option><option value="none">Sin cliente</option>${S.clients.map((c) => `<option value="${c.id}" ${f.client === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
     <select id="is"><option value="">Todos los estados</option>${opts(IDEA_ST, f.status)}</select>
     <select id="io"><option value="">Todos los responsables</option><option value="none">Sin responsable</option>${people.map((p) => `<option value="${p.id}" ${f.owner === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div>
-  <div class="grid igrid">${list.map(card).join('') || '<p class="empty">Aún no hay ideas con estos filtros. Pulsa "+ Nueva idea".</p>'}</div>`;
+  ${ideaBoard}`;
 }
 function openIdea(id) {
   const i = id ? S.ideas.find((x) => x.id === id) : null;
@@ -362,8 +362,9 @@ function bind() {
 }
 
 // Arrastrar tarjetas entre columnas (ratón y dedo; en móvil, mantén pulsado un momento)
-function enableDrag() {
-  const board = $('.board'); if (!board) return;
+function enableDrag() { document.querySelectorAll('.board').forEach(dragBoard); }
+function dragBoard(board) {
+  const isIdea = board.dataset.kind === 'idea';
   let st = null;
   const colAt = (x, y) => document.elementFromPoint(x, y)?.closest('.col');
   const clear = () => document.querySelectorAll('.col.over').forEach((c) => c.classList.remove('over'));
@@ -375,7 +376,13 @@ function enableDrag() {
     document.body.appendChild(st.ghost); st.card.classList.add('dragging');
     board.style.scrollSnapType = 'none';
     st.lx = e.clientX; st.ly = e.clientY;
-    st.auto = setInterval(() => { const br = board.getBoundingClientRect(); const d = st.lx > br.right - 50 ? 12 : st.lx < br.left + 50 ? -12 : 0; if (d) { board.scrollLeft += d; clear(); colAt(st.lx, st.ly)?.classList.add('over'); } }, 16);
+    st.auto = setInterval(() => {
+      const br = board.getBoundingClientRect();
+      const dx = st.lx > br.right - 50 ? 12 : st.lx < br.left + 50 ? -12 : 0;
+      const dy = st.ly > innerHeight - 70 ? 14 : st.ly < (document.querySelector('.top')?.getBoundingClientRect().bottom || 0) + 24 ? -14 : 0;
+      if (dx) board.scrollLeft += dx; if (dy) scrollBy(0, dy);
+      if (dx || dy) { clear(); colAt(st.lx, st.ly)?.classList.add('over'); }
+    }, 16);
     try { board.setPointerCapture(st.id); } catch (_) {}
   };
   const move = (e) => {
@@ -398,8 +405,12 @@ function enableDrag() {
     s.ghost.remove(); s.card.classList.remove('dragging'); clear();
     S.dragged = true; setTimeout(() => { S.dragged = false; }, 50);
     const col = e.type === 'pointercancel' ? null : colAt(e.clientX, e.clientY);
-    const to = col?.dataset.status; const t = S.tasks.find((x) => x.id === s.card.dataset.open);
-    if (!to || !t || t.status === to) return;
+    const to = col?.dataset.status; if (!to) return;
+    if (isIdea) {
+      const i = S.ideas.find((x) => x.id === s.card.dataset.idea); if (!i || i.status === to) return;
+      return guard(async () => { try { await api.saveIdea(i.id, { status: to }); toast('Idea movida a ' + IDEA_ST[to]); } finally { await refresh(); render(); } });
+    }
+    const t = S.tasks.find((x) => x.id === s.card.dataset.open); if (!t || t.status === to) return;
     guard(async () => {
       try { if (isAdmin()) await api.updateTask(t.id, { status: to }); else await api.editorStatus(t.id, to); toast('Movida a ' + STATUS[to]); }
       finally { await refresh(); render(); }
@@ -407,11 +418,14 @@ function enableDrag() {
   };
   board.addEventListener('pointerdown', (e) => {
     const card = e.target.closest('.task'); if (!card || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    if (e.target.closest('select,a,input,button')) return;
     st = { id: e.pointerId, card, x: e.clientX, y: e.clientY, on: false, timerDone: false };
+    if (e.target.closest('.grip')) { st.timerDone = true; e.preventDefault(); begin(e); return; }
     if (e.pointerType !== 'mouse') st.timer = setTimeout(() => { if (st) { st.timerDone = true; navigator.vibrate?.(15); begin(e); } }, 350);
   });
   board.addEventListener('pointermove', move); board.addEventListener('pointerup', end); board.addEventListener('pointercancel', end);
   board.addEventListener('touchmove', (e) => { if (st?.on) e.preventDefault(); }, { passive: false });
+  board.addEventListener('contextmenu', (e) => { if (e.target.closest('.task')) e.preventDefault(); });
   board.addEventListener('dragstart', (e) => e.preventDefault());
 }
 
