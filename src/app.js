@@ -65,11 +65,20 @@ function render() {
   <div class="shell">
     <header class="top"><div class="brand"><span class="dot"></span>Sala de Trabajo</div>
       <nav class="navbar">${nav()}</nav>
-      <div class="who"><span>${esc(S.me.name)}<small>${isAdmin() ? 'Administrador' : 'Editor'}</small></span><button class="btn ghost" id="out">Salir</button></div>
+      <div class="who"><span>${esc(S.me.name)}<small>${isAdmin() ? 'Administrador' : 'Editor'}</small></span><button class="btn ghost" id="cal" title="Ver tus fechas en Google Calendar">Calendario</button><button class="btn ghost" id="out">Salir</button></div>
     </header>
     <main class="main" id="main">${body()}</main>
     <div id="toast" class="toast" role="status"></div>
   </div>`;
+  $('#cal').onclick = async () => {
+    let url; try { url = await api.calUrl(); } catch (e) { return toast('No se pudo generar el enlace'); }
+    const o = document.createElement('div'); o.className = 'calmodal';
+    o.innerHTML = `<div class="calbox"><h2>Tus fechas en Google Calendar</h2><p>Copia este enlace privado. En Google Calendar: <b>Otros calendarios</b> (+) &rarr; <b>Desde URL</b> &rarr; pégalo. Se actualiza solo (Google puede tardar unas horas). Solo aparecen las tareas con fecha${isAdmin() ? '' : ' que tienes asignadas'}.</p><input readonly value="${url}"><p class="small">No lo compartas: quien tenga el enlace ve los títulos de las tareas.</p><div class="row"><button class="btn" id="cc">Copiar enlace</button><button class="btn ghost" id="cx">Cerrar</button></div></div>`;
+    document.body.appendChild(o);
+    const inp = o.querySelector('input'); inp.onclick = () => inp.select();
+    o.querySelector('#cc').onclick = async () => { try { await navigator.clipboard.writeText(url); } catch { inp.select(); document.execCommand('copy'); } toast('Enlace copiado'); };
+    o.querySelector('#cx').onclick = () => o.remove(); o.onclick = (e) => { if (e.target === o) o.remove(); };
+  };
   $('#out').onclick = async () => { await api.signOut(); S.me = null; renderLogin(); };
   bind();
 }

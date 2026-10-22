@@ -40,6 +40,7 @@ const real = {
   async deleteClient(id) { const { error } = await sb.from('clients').delete().eq('id', id); if (error) throw error; },
   async clientPrivate(id) { const [p, b] = await Promise.all([sb.from('client_private').select('*').eq('client_id', id).maybeSingle(), sb.from('client_billing').select('*').eq('client_id', id).maybeSingle()]); return { ...(p.data || {}), billing: b.data || {} }; },
   async saveClientPrivate(id, priv, billing) { const a = await sb.from('client_private').upsert({ client_id: id, ...priv }); if (a.error) throw a.error; const b = await sb.from('client_billing').upsert({ client_id: id, ...billing }); if (b.error) throw b.error; },
+  async calUrl() { const { data, error } = await sb.rpc('my_calendar_token'); if (error) throw error; return cfg.url + '/functions/v1/ical?t=' + data; },
   async people() { const { data, error } = await sb.rpc('people'); if (error) throw error; return data; },
   async invites() { const { data, error } = await sb.from('invites').select('*').order('created_at'); if (error) throw error; return data; },
   async addInvite(i) { const { error } = await sb.from('invites').upsert({ ...i, email: i.email.toLowerCase() }); if (error) throw error; },
@@ -108,4 +109,5 @@ const demo = {
   async addComment(task_id, author, body, for_client = false) { const s = st(); s.comments.push({ id: uid(), task_id, author, body, for_client, created_at: new Date().toISOString() }); save(s); },
 };
 
+demo.calUrl = async () => 'https://ejemplo.invalid/ical?t=demo';
 export const api = DEMO ? demo : real;

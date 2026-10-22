@@ -51,3 +51,9 @@ label{display:block;font-weight:600;font-size:13px;margin:10px 0 0}label input,l
 .s-correcciones{background:#fde1dc;color:#b6341f}label.check.inl{display:inline-flex;margin:0 0 0 8px;font-weight:400}.col h3{font-size:14px}
 
 .task{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}.task.dragging{opacity:.35}.task.ghost{box-shadow:0 12px 30px rgba(0,0,0,.25);transform:rotate(2deg);opacity:.95;margin:0}.col.over{outline:2px dashed var(--acc);outline-offset:-4px;background:#e4dfd2}
+
+.calmodal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:99;padding:16px}
+.calbox{background:var(--card,#1c1f26);color:inherit;border-radius:12px;padding:20px;max-width:480px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,.4)}
+.calbox input{width:100%;padding:10px;margin:8px 0;box-sizing:border-box;font-size:13px}
+.calbox .row{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}.calbox .small{font-size:12px;opacity:.7}
+.who{flex-wrap:wrap;gap:6px}

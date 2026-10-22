@@ -290,3 +290,24 @@ grant select on public.activity to authenticated;
 grant execute on function public.people(), public.editor_set_status(uuid,text), public.is_admin(), public.is_agent(), public.is_editor(), public.my_role(), public.my_client(), public.assigned_to_me(uuid) to authenticated;
 
 -- Semilla (cambiar correos): insert into public.invites(email,name,role) values ('CORREO_SAMUEL','Samuel','admin');
+create table if not exists public.calendar_tokens (
+  token text primary key default encode(gen_random_bytes(24),'hex'),
+  user_id uuid references public.profiles(id) on delete cascade,
+  scope text not null default 'mine' check (scope in ('mine','all')),
+  label text default '',
+  created_at timestamptz default now()
+);
+alter table public.calendar_tokens enable row level security;
+create or replace function public.my_calendar_token() returns text language plpgsql security definer set search_path=public,extensions as $$
+declare t text; r text;
+begin
+  if auth.uid() is null then raise exception 'no auth'; end if;
+  select token into t from calendar_tokens where user_id=auth.uid() order by created_at limit 1;
+  if t is null then
+    select role into r from profiles where id=auth.uid();
+    insert into calendar_tokens(user_id,scope) values (auth.uid(), case when r='admin' then 'all' else 'mine' end) returning token into t;
+  end if;
+  return t;
+end $$;
+revoke all on function public.my_calendar_token() from public, anon;
+grant execute on function public.my_calendar_token() to authenticated;
