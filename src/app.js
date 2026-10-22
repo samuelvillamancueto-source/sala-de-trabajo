@@ -14,6 +14,8 @@ const IDEA_KIND = { viral: 'Viral', tendencia: 'Tendencia / meme', copy: 'Copy',
 const IDEA_FMT = { reel: 'Reel', tiktok: 'TikTok', story: 'Story', carrusel: 'Carrusel', post: 'Post', meme: 'Meme', email: 'Email', anuncio: 'Anuncio', otro: 'Otro' };
 const S = { ideas: [], ifilter: { client: '', status: '', owner: '', q: '' }, me: null, tasks: [], clients: [], people: [], view: 'resumen', mode: 'tablero', filter: { who: '', client: '' }, toast: '' };
 const isAdmin = () => S.me?.role === 'admin';
+const mem = (t) => [t.assigned_to, ...(t.also_assigned || [])].filter(Boolean);
+const pnames = (t) => (mem(t).length ? mem(t).map((id) => pname(id)).join(' y ') : 'Sin asignar');
 const pname = (id) => S.people.find((p) => p.id === id)?.name || 'Sin asignar';
 const cname = (id) => S.clients.find((c) => c.id === id)?.name || '';
 
@@ -131,7 +133,7 @@ function card(t) {
     <div class="row"><span class="chip p-${t.priority}">${PRIO[t.priority]}</span>${t.approved ? '<span class="chip ok">Aprobado</span>' : ''}<span class="grip" title="Arrastra para cambiar de estado" aria-hidden="true">⋮⋮</span></div>
     <h4>${esc(t.title)}</h4>
     <div class="meta">${t.client_id ? `<span>${esc(cname(t.client_id))}</span>` : ''}<span class="${late(t) ? 'bad' : ''}">${fmt(t.due)}</span></div>
-    <div class="foot"><span class="av">${esc(pname(t.assigned_to)[0] || '?')}</span><span>${esc(pname(t.assigned_to))}</span>${link ? `<span class="chip">Ronda ${t.round}</span>` : ''}</div>
+    <div class="foot"><span class="av">${esc(pname(t.assigned_to)[0] || '?')}</span>${(t.also_assigned || []).slice(0, 3).map((id) => `<span class="av av2">${esc(pname(id)[0] || '?')}</span>`).join('')}<span>${esc(pnames(t))}</span>${link ? `<span class="chip">Ronda ${t.round}</span>` : ''}</div>
   </article>`;
 }
 function board(list) {
@@ -143,7 +145,7 @@ function board(list) {
 function listView(list) {
   if (!list.length) return '<p class="empty big">No hay tareas con estos filtros.</p>';
   return `<div class="card tablewrap"><table><thead><tr><th>Tarea</th><th>Cliente</th><th>Asignado a</th><th>Estado</th><th>Entrega</th></tr></thead><tbody>${
-    list.map((t) => `<tr data-open="${t.id}" tabindex="0"><td><b>${esc(t.title)}</b><br><span class="chip p-${t.priority}">${PRIO[t.priority]}</span></td><td>${esc(cname(t.client_id))}</td><td>${esc(pname(t.assigned_to))}</td><td><span class="chip s-${t.status}">${STATUS[t.status]}</span></td><td class="${late(t) ? 'bad' : ''}">${fmt(t.due)}</td></tr>`).join('')}</tbody></table></div>`;
+    list.map((t) => `<tr data-open="${t.id}" tabindex="0"><td><b>${esc(t.title)}</b><br><span class="chip p-${t.priority}">${PRIO[t.priority]}</span></td><td>${esc(cname(t.client_id))}</td><td>${esc(pnames(t))}</td><td><span class="chip s-${t.status}">${STATUS[t.status]}</span></td><td class="${late(t) ? 'bad' : ''}">${fmt(t.due)}</td></tr>`).join('')}</tbody></table></div>`;
 }
 function calendar(list) {
   const base = new Date(); const y = base.getFullYear(), m = base.getMonth();
@@ -174,7 +176,7 @@ function vResumen() {
   </div>
   <div class="two">
     <section><h2>Próximas entregas</h2><div class="stack">${next.map(card).join('') || '<p class="empty">Todo al día.</p>'}</div></section>
-    <section><h2>Carga por editor</h2><div class="card">${editors.map((p) => { const n = open.filter((t) => t.assigned_to === p.id).length; return `<div class="load"><span>${esc(p.name)}</span><div class="bar"><i style="width:${Math.min(100, n * 20)}%"></i></div><b>${n}</b></div>`; }).join('') || '<p class="empty">Aún no hay editores. Invítalos en Equipo.</p>'}</div></section>
+    <section><h2>Carga por editor</h2><div class="card">${editors.map((p) => { const n = open.filter((t) => mem(t).includes(p.id)).length; return `<div class="load"><span>${esc(p.name)}</span><div class="bar"><i style="width:${Math.min(100, n * 20)}%"></i></div><b>${n}</b></div>`; }).join('') || '<p class="empty">Aún no hay editores. Invítalos en Equipo.</p>'}</div></section>
   </div>`;
 }
 function filters() {
@@ -185,14 +187,14 @@ function filters() {
 }
 function vTareas() {
   let list = S.tasks;
-  if (S.filter.who) list = list.filter((t) => (S.filter.who === 'none' ? !t.assigned_to : t.assigned_to === S.filter.who));
+  if (S.filter.who) list = list.filter((t) => (S.filter.who === 'none' ? !t.assigned_to : mem(t).includes(S.filter.who)));
   if (S.filter.client) list = list.filter((t) => t.client_id === S.filter.client);
   const v = S.mode === 'lista' ? listView(list) : S.mode === 'calendario' ? calendar(list) : board(list);
   return `<div class="head"><h1>Tareas</h1><button class="btn primary" data-new>+ Nueva tarea</button></div>
   <div class="bar2"><div class="seg">${['tablero', 'lista', 'calendario'].map((m) => `<button data-mode="${m}" class="${S.mode === m ? 'on' : ''}">${m[0].toUpperCase() + m.slice(1)}</button>`).join('')}</div>${filters()}</div>${v}`;
 }
 function vMis() {
-  const mine = S.tasks.filter((t) => t.assigned_to === S.me.id);
+  const mine = S.tasks.filter((t) => mem(t).includes(S.me.id));
   const sorted = [...mine].sort((a, b) => (a.status === 'listo') - (b.status === 'listo') || ((a.due || '9') < (b.due || '9') ? -1 : 1));
   return `<h1>Mis encargos</h1><p class="muted">${isAdmin() ? 'Lo que tienes asignado a ti.' : 'Solo ves lo que un administrador te ha asignado.'}</p>
   <div class="stack wide">${sorted.map(card).join('') || '<p class="empty big">No tienes encargos ahora mismo.</p>'}</div>`;
@@ -310,6 +312,7 @@ async function openTask(id) {
       <label>Título<input name="title" required value="${esc(t?.title)}"></label>
       <div class="cols"><label>Cliente<select name="client_id"><option value="">Sin cliente</option>${S.clients.map((c) => `<option value="${c.id}" ${t?.client_id === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
       <label>Asignado a<select name="assigned_to"><option value="">Sin asignar</option>${S.people.filter((p) => p.role !== 'agent').map((p) => `<option value="${p.id}" ${t?.assigned_to === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label></div>
+      <fieldset class="parts"><legend>Participantes (además del responsable)</legend>${S.people.filter((p) => p.role !== 'agent').map((p) => `<label class="check"><input type="checkbox" name="also" value="${p.id}" ${(t?.also_assigned || []).includes(p.id) ? 'checked' : ''}> ${esc(p.name)}</label>`).join('')}</fieldset>
       <div class="cols"><label>Estado<select name="status">${opts(STATUS, t?.status || 'pendiente')}</select></label>
       <label>Prioridad<select name="priority">${opts(PRIO, t?.priority || 'media')}</select></label>
       <label>Fecha límite<input type="date" name="due" value="${t?.due || ''}"></label></div>
@@ -342,7 +345,7 @@ async function openTask(id) {
   if (tf) {
     tf.onsubmit = (e) => { e.preventDefault(); guard(async () => {
       const f = new FormData(tf);
-      const row = { title: f.get('title').trim(), client_id: f.get('client_id') || null, assigned_to: f.get('assigned_to') || null, status: f.get('status'), priority: f.get('priority'), due: f.get('due') || null, brief: f.get('brief'), client_brief: f.get('client_brief'), raw_url: f.get('raw_url'), reference_url: f.get('reference_url'), tags: f.get('tags').split(',').map((x) => x.trim()).filter(Boolean), approved: f.get('approved') === 'on', client_visible: f.get('client_visible') === 'on' };
+      const row = { title: f.get('title').trim(), client_id: f.get('client_id') || null, assigned_to: f.get('assigned_to') || null, also_assigned: f.getAll('also').filter((x) => x !== f.get('assigned_to')), status: f.get('status'), priority: f.get('priority'), due: f.get('due') || null, brief: f.get('brief'), client_brief: f.get('client_brief'), raw_url: f.get('raw_url'), reference_url: f.get('reference_url'), tags: f.get('tags').split(',').map((x) => x.trim()).filter(Boolean), approved: f.get('approved') === 'on', client_visible: f.get('client_visible') === 'on' };
       let tid = t?.id;
       if (t) await api.updateTask(t.id, row); else { tid = await api.createTask({ ...row, created_by: S.me.id }); }
       if (f.get('pay_amount') !== '' && tid) await api.savePay(tid, { amount: Number(f.get('pay_amount')), status: f.get('pay_status'), paid_at: f.get('pay_status') === 'pagado' ? today() : null });
