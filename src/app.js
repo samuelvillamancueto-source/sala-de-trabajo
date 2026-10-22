@@ -134,7 +134,7 @@ function card(t) {
     <div class="row"><span class="chip p-${t.priority}">${PRIO[t.priority]}</span>${t.is_video ? '<span class="chip vid">Vídeo</span>' : ''}${t.approved ? '<span class="chip ok">Aprobado</span>' : ''}<span class="grip" title="Arrastra para cambiar de estado" aria-hidden="true">⋮⋮</span></div>
     <h4>${esc(t.title)}</h4>
     <div class="meta">${t.client_id ? `<span>${esc(cname(t.client_id))}</span>` : ''}<span class="${late(t) ? 'bad' : ''}">${fmt(t.due)}</span></div>
-    <div class="foot"><span class="av">${esc(pname(t.assigned_to)[0] || '?')}</span>${(t.also_assigned || []).slice(0, 3).map((id) => `<span class="av av2">${esc(pname(id)[0] || '?')}</span>`).join('')}<span>${esc(pnames(t))}</span>${link ? `<span class="chip">Ronda ${t.round}</span>` : ''}</div>
+    <div class="foot"><span class="av">${esc(pname(t.assigned_to)[0] || '?')}</span>${(t.also_assigned || []).slice(0, 3).map((id) => `<span class="av av2">${esc(pname(id)[0] || '?')}</span>`).join('')}<span>${esc(pnames(t))}</span>${link ? `<span class="chip">Ronda ${t.round}</span>` : ''}</div>${t.created_by ? `<p class="by">Creada por ${esc(pname(t.created_by))}</p>` : ''}
   </article>`;
 }
 function board(list) {
@@ -328,11 +328,12 @@ async function openTask(id) {
       <label>Estado del pago<select name="pay_status"><option value="pendiente" ${pay?.status !== 'pagado' ? 'selected' : ''}>Pendiente</option><option value="pagado" ${pay?.status === 'pagado' ? 'selected' : ''}>Pagado</option></select></label></div>
       <label class="check"><input type="checkbox" name="approved" ${t?.approved ? 'checked' : ''}> Aprobada</label>
       <label class="check"><input type="checkbox" name="client_visible" ${t?.client_visible ? 'checked' : ''}> Visible para el cliente (portal)</label>
+      ${t?.created_by ? `<p class="muted small">Creada por ${esc(pname(t.created_by))}${t.created_at ? ' el ' + when(t.created_at) : ''}.</p>` : ''}
       ${approval}
       ${t ? `<div class="vid" ${isVid || deliveries.length ? '' : 'hidden'}><h3>Entregas</h3>${dl || '<p class="empty">Sin entregas.</p>'}</div><h3>Comentarios</h3>${cm || '<p class="empty">Sin comentarios.</p>'}<div class="cminput"><input id="cin" placeholder="Escribe un comentario"><button type="button" class="btn ghost sm" id="cadd">Enviar</button></div><label class="check"><input type="checkbox" id="cfc"> Visible para el cliente</label>` : ''}
       <div class="actions">${t ? '<button type="button" class="btn danger" id="del">Eliminar</button>' : '<span></span>'}<button class="btn primary">Guardar</button></div></form>`
   : `<div><div class="head"><h2>${esc(t.title)}</h2><button class="btn ghost sm" data-close>Cerrar</button></div>
-      ${ro('Participantes', esc(pnames(t)))}${ro('Cliente', esc(cname(t.client_id)) || '<em>Sin cliente</em>')}${ro('Fecha límite', fmt(t.due))}${ro('Prioridad', PRIO[t.priority])}${ro('Estado', STATUS[t.status] + (t.round ? ` (ronda de correcciones ${t.round})` : ''))}
+      ${ro('Participantes', esc(pnames(t)))}${t.created_by ? ro('Creada por', esc(pname(t.created_by))) : ''}${ro('Cliente', esc(cname(t.client_id)) || '<em>Sin cliente</em>')}${ro('Fecha límite', fmt(t.due))}${ro('Prioridad', PRIO[t.priority])}${ro('Estado', STATUS[t.status] + (t.round ? ` (ronda de correcciones ${t.round})` : ''))}
       ${ro('Brief', esc(t.brief).replace(/\n/g, '<br>') || '<em>Sin brief</em>')}${ro('Material en bruto', lnk(t.raw_url))}${ro('Referencia', lnk(t.reference_url))}
       ${pay ? ro('Pago', `${Number(pay.amount).toFixed(2)} € · ${pay.status === 'pagado' ? 'pagado' : 'pendiente'}`) : ''}
       ${t.status === 'listo' ? '<p class="note">Esta tarea ya está aprobada y cerrada por un administrador.</p>' : `<form id="ef"><label>Estado<select name="status">${opts({ pendiente: 'Pendiente', en_proceso: 'En proceso', revision: 'Enviar a revisión' }, ['listo', 'correcciones'].includes(t.status) ? 'en_proceso' : t.status)}</select></label>

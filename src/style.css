@@ -144,3 +144,4 @@ tbody tr:focus-visible{outline:2px solid rgba(147,164,245,.7);outline-offset:-2p
 .ibar select,.filters select{width:auto;min-width:0;max-width:100%;flex:1 1 150px;text-overflow:ellipsis}.ibar input{flex:2 1 200px;width:auto}
 .av2{margin-left:-10px;background:#2c3446;border:2px solid var(--card)}.av2+span{margin-left:2px}.parts{border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin:8px 0}.parts legend{color:var(--mut);font-size:12.5px;padding:0 6px}.parts .check{display:inline-flex;margin:4px 14px 4px 0}
 .chip.vid{background:rgba(147,164,245,.14);color:var(--acc2)}.vidsw{margin:6px 0}.vidsw small{font-weight:400}[hidden]{display:none!important}
+.task .by{margin:6px 0 0;font-size:12px;color:var(--mut)}
