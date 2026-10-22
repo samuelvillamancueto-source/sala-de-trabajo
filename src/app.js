@@ -15,7 +15,7 @@ const IDEA_FMT = { reel: 'Reel', tiktok: 'TikTok', story: 'Story', carrusel: 'Ca
 const S = { ideas: [], ifilter: { client: '', status: '', owner: '', q: '' }, me: null, tasks: [], clients: [], people: [], view: 'resumen', mode: 'tablero', filter: { who: '', client: '' }, toast: '' };
 const isAdmin = () => S.me?.role === 'admin';
 const mem = (t) => [t.assigned_to, ...(t.also_assigned || [])].filter(Boolean);
-const pnames = (t) => (mem(t).length ? mem(t).map((id) => pname(id)).join(' y ') : 'Sin asignar');
+const pnames = (t) => { const n = mem(t).map((id) => pname(id)); if (!n.length) return 'Sin asignar'; if (n.length === 1) return n[0]; if (n.length <= 3) return n.slice(0, -1).join(', ') + ' y ' + n[n.length - 1]; return n.slice(0, 2).join(', ') + ' y ' + (n.length - 2) + ' más'; };
 const pname = (id) => S.people.find((p) => p.id === id)?.name || 'Sin asignar';
 const cname = (id) => S.clients.find((c) => c.id === id)?.name || '';
 
@@ -47,6 +47,7 @@ function friendly(e) {
   if (/jwt|token.*expired|PGRST30[0-9]/i.test(m + c)) return 'Tu sesión ha caducado. Vuelve a entrar.';
   if (/failed to fetch|networkerror|load failed/i.test(m)) return 'Sin conexión con el servidor. Inténtalo de nuevo.';
   if (c === '42501' || /row-level security|permission denied/i.test(m)) return 'No tienes permiso para hacer esto.';
+  if (c === 'P0001' && m) return m;
   if (c === '23514') return 'Revisa los datos: algún campo es demasiado largo o el enlace no empieza por http(s)://.';
   if (c === '23505') return 'Ese dato ya existe.';
   if (c === '23503') return 'No se puede por datos relacionados (por ejemplo, está en uso).';
@@ -96,12 +97,12 @@ function renderLogin(msg = '') {
 // ---------- Layout ----------
 function nav() {
   const items = isAdmin()
-    ? [['resumen', 'Resumen'], ['tareas', 'Tareas'], ['mis', 'Mis encargos'], ['ideas', 'Ideas'], ['finanzas', 'Finanzas'], ['clientes', 'Clientes'], ['equipo', 'Equipo']]
+    ? [['resumen', 'Resumen'], ['tareas', 'Tareas'], ['edicion', 'Edición'], ['mis', 'Mis encargos'], ['ideas', 'Ideas'], ['finanzas', 'Finanzas'], ['clientes', 'Clientes'], ['equipo', 'Equipo']]
     : [['mis', 'Mis encargos']];
   return items.map(([k, l]) => `<a href="#/${k}" class="nav ${S.view === k ? 'on' : ''}" data-v="${k}">${l}</a>`).join('');
 }
 function render() {
-  const body = { resumen: vResumen, tareas: vTareas, mis: vMis, clientes: vClientes, equipo: vEquipo, ideas: vIdeas, finanzas: vFinanzas }[S.view] || vMis;
+  const body = { resumen: vResumen, tareas: vTareas, mis: vMis, clientes: vClientes, equipo: vEquipo, ideas: vIdeas, finanzas: vFinanzas, edicion: () => vTareas(true) }[S.view] || vMis;
   $('#app').innerHTML = `
   <div class="shell">
     <header class="top"><div class="brand"><span class="dot"></span>Sala de Trabajo</div>
@@ -130,7 +131,7 @@ window.addEventListener('hashchange', () => { if (!S.me) return; const v = locat
 function card(t) {
   const link = t.round > 0;
   return `<article class="task ${late(t) ? 'late' : ''}" data-open="${t.id}" tabindex="0">
-    <div class="row"><span class="chip p-${t.priority}">${PRIO[t.priority]}</span>${t.approved ? '<span class="chip ok">Aprobado</span>' : ''}<span class="grip" title="Arrastra para cambiar de estado" aria-hidden="true">⋮⋮</span></div>
+    <div class="row"><span class="chip p-${t.priority}">${PRIO[t.priority]}</span>${t.is_video ? '<span class="chip vid">Vídeo</span>' : ''}${t.approved ? '<span class="chip ok">Aprobado</span>' : ''}<span class="grip" title="Arrastra para cambiar de estado" aria-hidden="true">⋮⋮</span></div>
     <h4>${esc(t.title)}</h4>
     <div class="meta">${t.client_id ? `<span>${esc(cname(t.client_id))}</span>` : ''}<span class="${late(t) ? 'bad' : ''}">${fmt(t.due)}</span></div>
     <div class="foot"><span class="av">${esc(pname(t.assigned_to)[0] || '?')}</span>${(t.also_assigned || []).slice(0, 3).map((id) => `<span class="av av2">${esc(pname(id)[0] || '?')}</span>`).join('')}<span>${esc(pnames(t))}</span>${link ? `<span class="chip">Ronda ${t.round}</span>` : ''}</div>
@@ -185,12 +186,12 @@ function filters() {
     <select id="fc" aria-label="Cliente"><option value="">Todos los clientes</option>${S.clients.map((c) => `<option value="${c.id}" ${S.filter.client === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
   </div>`;
 }
-function vTareas() {
-  let list = S.tasks;
+function vTareas(video = false) {
+  let list = video ? S.tasks.filter((t) => t.is_video) : S.tasks;
   if (S.filter.who) list = list.filter((t) => (S.filter.who === 'none' ? !t.assigned_to : mem(t).includes(S.filter.who)));
   if (S.filter.client) list = list.filter((t) => t.client_id === S.filter.client);
   const v = S.mode === 'lista' ? listView(list) : S.mode === 'calendario' ? calendar(list) : board(list);
-  return `<div class="head"><h1>Tareas</h1><button class="btn primary" data-new>+ Nueva tarea</button></div>
+  return `<div class="head"><h1>${video ? 'Edición' : 'Tareas'}</h1><button class="btn primary" data-new>${video ? '+ Nueva tarea de edición' : '+ Nueva tarea'}</button></div>${video ? '<p class="muted small">Tareas marcadas como "vídeo para editar". Son las mismas tareas que en Tareas: el estado está sincronizado porque es la misma ficha. Los editores solo ven estas.</p>' : ''}
   <div class="bar2"><div class="seg">${['tablero', 'lista', 'calendario'].map((m) => `<button data-mode="${m}" class="${S.mode === m ? 'on' : ''}">${m[0].toUpperCase() + m.slice(1)}</button>`).join('')}</div>${filters()}</div>${v}`;
 }
 function vMis() {
@@ -299,6 +300,7 @@ async function openTask(id) {
   const t = id ? S.tasks.find((x) => x.id === id) : null;
   if (!t && !isAdmin()) return;
   const admin = isAdmin();
+  const isVid = t ? !!t.is_video : S.view === 'edicion';
   const [comments, deliveries, pay] = t ? await Promise.all([api.comments(t.id).catch(() => []), api.deliveries(t.id).catch(() => []), api.pay(t.id).catch(() => null)]) : [[], [], null];
   const when = (d) => new Date(d).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Europe/Madrid' });
   const cm = comments.map((c) => `<div class="cm"><b>${esc(pname(c.author))}</b> <small>${when(c.created_at)}</small>${c.for_client ? ' <span class="chip ok">Para cliente</span>' : ''}<p>${esc(c.body)}</p></div>`).join('');
@@ -310,6 +312,7 @@ async function openTask(id) {
   const m = modal(admin ? `
     <form id="tf"><div class="head"><h2>${t ? 'Editar tarea' : 'Nueva tarea'}</h2><button type="button" class="btn ghost sm" data-close>Cerrar</button></div>
       <label>Título<input name="title" required value="${esc(t?.title)}"></label>
+      <label class="check vidsw"><input type="checkbox" name="is_video" ${isVid ? 'checked' : ''}> Vídeo para editar <small class="muted">(activa pago al editor, enlace al bruto, entregas y rondas; solo los editores ven estas tareas)</small></label>
       <div class="cols"><label>Cliente<select name="client_id"><option value="">Sin cliente</option>${S.clients.map((c) => `<option value="${c.id}" ${t?.client_id === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
       <label>Asignado a<select name="assigned_to"><option value="">Sin asignar</option>${S.people.filter((p) => p.role !== 'agent').map((p) => `<option value="${p.id}" ${t?.assigned_to === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label></div>
       <fieldset class="parts"><legend>Participantes (además del responsable)</legend>${S.people.filter((p) => p.role !== 'agent').map((p) => `<label class="check"><input type="checkbox" name="also" value="${p.id}" ${(t?.also_assigned || []).includes(p.id) ? 'checked' : ''}> ${esc(p.name)}</label>`).join('')}</fieldset>
@@ -318,18 +321,18 @@ async function openTask(id) {
       <label>Fecha límite<input type="date" name="due" value="${t?.due || ''}"></label></div>
       <label>Brief interno<textarea name="brief" rows="4">${esc(t?.brief)}</textarea></label>
       <label>Brief para el cliente (lo que verá en su portal)<textarea name="client_brief" rows="2">${esc(t?.client_brief)}</textarea></label>
-      <div class="cols"><label>Enlace al bruto<input name="raw_url" type="url" value="${esc(t?.raw_url)}" placeholder="https://"></label>
+      <div class="cols"><label class="vid" ${isVid ? '' : 'hidden'}>Enlace al bruto<input name="raw_url" type="url" value="${esc(t?.raw_url)}" placeholder="https://"></label>
       <label>Referencia<input name="reference_url" type="url" value="${esc(t?.reference_url)}" placeholder="https://"></label></div>
       <label>Etiquetas (separadas por coma)<input name="tags" value="${esc((t?.tags || []).join(', '))}"></label>
-      <div class="cols"><label>Pago al editor (€)<input name="pay_amount" type="number" step="0.01" min="0" value="${pay ? pay.amount : ''}"></label>
+      <div class="cols vid" ${isVid ? '' : 'hidden'}><label>Pago al editor (€)<input name="pay_amount" type="number" step="0.01" min="0" value="${pay ? pay.amount : ''}"></label>
       <label>Estado del pago<select name="pay_status"><option value="pendiente" ${pay?.status !== 'pagado' ? 'selected' : ''}>Pendiente</option><option value="pagado" ${pay?.status === 'pagado' ? 'selected' : ''}>Pagado</option></select></label></div>
-      <label class="check"><input type="checkbox" name="approved" ${t?.approved ? 'checked' : ''}> Vídeo aprobado</label>
+      <label class="check"><input type="checkbox" name="approved" ${t?.approved ? 'checked' : ''}> Aprobada</label>
       <label class="check"><input type="checkbox" name="client_visible" ${t?.client_visible ? 'checked' : ''}> Visible para el cliente (portal)</label>
       ${approval}
-      ${t ? `<h3>Entregas</h3>${dl || '<p class="empty">Sin entregas.</p>'}<h3>Comentarios</h3>${cm || '<p class="empty">Sin comentarios.</p>'}<div class="cminput"><input id="cin" placeholder="Escribe un comentario"><button type="button" class="btn ghost sm" id="cadd">Enviar</button></div><label class="check"><input type="checkbox" id="cfc"> Visible para el cliente</label>` : ''}
+      ${t ? `<div class="vid" ${isVid || deliveries.length ? '' : 'hidden'}><h3>Entregas</h3>${dl || '<p class="empty">Sin entregas.</p>'}</div><h3>Comentarios</h3>${cm || '<p class="empty">Sin comentarios.</p>'}<div class="cminput"><input id="cin" placeholder="Escribe un comentario"><button type="button" class="btn ghost sm" id="cadd">Enviar</button></div><label class="check"><input type="checkbox" id="cfc"> Visible para el cliente</label>` : ''}
       <div class="actions">${t ? '<button type="button" class="btn danger" id="del">Eliminar</button>' : '<span></span>'}<button class="btn primary">Guardar</button></div></form>`
   : `<div><div class="head"><h2>${esc(t.title)}</h2><button class="btn ghost sm" data-close>Cerrar</button></div>
-      ${ro('Cliente', esc(cname(t.client_id)) || '<em>Sin cliente</em>')}${ro('Fecha límite', fmt(t.due))}${ro('Prioridad', PRIO[t.priority])}${ro('Estado', STATUS[t.status] + (t.round ? ` (ronda de correcciones ${t.round})` : ''))}
+      ${ro('Participantes', esc(pnames(t)))}${ro('Cliente', esc(cname(t.client_id)) || '<em>Sin cliente</em>')}${ro('Fecha límite', fmt(t.due))}${ro('Prioridad', PRIO[t.priority])}${ro('Estado', STATUS[t.status] + (t.round ? ` (ronda de correcciones ${t.round})` : ''))}
       ${ro('Brief', esc(t.brief).replace(/\n/g, '<br>') || '<em>Sin brief</em>')}${ro('Material en bruto', lnk(t.raw_url))}${ro('Referencia', lnk(t.reference_url))}
       ${pay ? ro('Pago', `${Number(pay.amount).toFixed(2)} € · ${pay.status === 'pagado' ? 'pagado' : 'pendiente'}`) : ''}
       ${t.status === 'listo' ? '<p class="note">Esta tarea ya está aprobada y cerrada por un administrador.</p>' : `<form id="ef"><label>Estado<select name="status">${opts({ pendiente: 'Pendiente', en_proceso: 'En proceso', revision: 'Enviar a revisión' }, ['listo', 'correcciones'].includes(t.status) ? 'en_proceso' : t.status)}</select></label>
@@ -343,12 +346,13 @@ async function openTask(id) {
   m.addEventListener('change', (e) => { const v = e.target.dataset?.dvis; if (v) guard(async () => { await api.setDelivery(v, { client_visible: e.target.checked }); toast('Guardado'); }); const f = e.target.dataset?.dfb; if (f) guard(async () => { await api.setDelivery(f, { feedback: e.target.value }); toast('Feedback guardado'); }); });
   const tf = $('#tf', m);
   if (tf) {
+    const sw = tf.querySelector('[name=is_video]'); sw.onchange = () => tf.querySelectorAll('.vid').forEach((x) => { if (x.tagName === 'DIV' && x.querySelector('h3')) return; x.hidden = !sw.checked; });
     tf.onsubmit = (e) => { e.preventDefault(); guard(async () => {
       const f = new FormData(tf);
-      const row = { title: f.get('title').trim(), client_id: f.get('client_id') || null, assigned_to: f.get('assigned_to') || null, also_assigned: f.getAll('also').filter((x) => x !== f.get('assigned_to')), status: f.get('status'), priority: f.get('priority'), due: f.get('due') || null, brief: f.get('brief'), client_brief: f.get('client_brief'), raw_url: f.get('raw_url'), reference_url: f.get('reference_url'), tags: f.get('tags').split(',').map((x) => x.trim()).filter(Boolean), approved: f.get('approved') === 'on', client_visible: f.get('client_visible') === 'on' };
+      const row = { title: f.get('title').trim(), client_id: f.get('client_id') || null, assigned_to: f.get('assigned_to') || null, also_assigned: f.getAll('also').filter((x) => x !== f.get('assigned_to')), is_video: f.get('is_video') === 'on', status: f.get('status'), priority: f.get('priority'), due: f.get('due') || null, brief: f.get('brief'), client_brief: f.get('client_brief'), raw_url: f.get('raw_url'), reference_url: f.get('reference_url'), tags: f.get('tags').split(',').map((x) => x.trim()).filter(Boolean), approved: f.get('approved') === 'on', client_visible: f.get('client_visible') === 'on' };
       let tid = t?.id;
       if (t) await api.updateTask(t.id, row); else { tid = await api.createTask({ ...row, created_by: S.me.id }); }
-      if (f.get('pay_amount') !== '' && tid) await api.savePay(tid, { amount: Number(f.get('pay_amount')), status: f.get('pay_status'), paid_at: f.get('pay_status') === 'pagado' ? today() : null });
+      if (row.is_video && f.get('pay_amount') !== '' && tid) await api.savePay(tid, { amount: Number(f.get('pay_amount')), status: f.get('pay_status'), paid_at: f.get('pay_status') === 'pagado' ? today() : null });
       await reload(); toast('Guardado');
     }); };
     const del = $('#del', m); if (del) del.onclick = () => { if (confirm('¿Eliminar esta tarea?')) guard(async () => { await api.deleteTask(t.id); await reload(); toast('Eliminada'); }); };

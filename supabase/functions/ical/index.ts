@@ -14,7 +14,7 @@ Deno.serve(async (req) => {
   const { data: pr } = await sb.from("profiles").select("role,active").eq("id", tk.user_id).maybeSingle();
   if (!pr || !pr.active || !["admin", "editor"].includes(pr.role)) return new Response("No encontrado", { status: 404 });
   let q = sb.from("tasks").select("id,title,status,due,priority,assigned_to,also_assigned,updated_at").not("due", "is", null).order("due").limit(2000);
-  if (pr.role !== "admin") q = q.or(`assigned_to.eq.${tk.user_id},also_assigned.cs.{${tk.user_id}}`);
+  if (pr.role !== "admin") q = q.eq("is_video", true).or(`assigned_to.eq.${tk.user_id},also_assigned.cs.{${tk.user_id}}`);
   const { data: tasks } = await q;
   const L = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Sala de Trabajo//ES", "CALSCALE:GREGORIAN", "METHOD:PUBLISH", "X-WR-CALNAME:Sala de Trabajo", "X-WR-TIMEZONE:Europe/Madrid", "REFRESH-INTERVAL;VALUE=DURATION:PT1H", "X-PUBLISHED-TTL:PT1H"];
   for (const t of tasks ?? []) {
