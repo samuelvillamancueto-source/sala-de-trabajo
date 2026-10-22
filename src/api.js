@@ -26,7 +26,7 @@ const real = {
   },
   async setPassword(pw) { const { error } = await sb.auth.updateUser({ password: pw }); if (error) throw new Error(error.message.includes('least') ? 'La contraseña debe tener al menos 10 caracteres.' : 'No se pudo guardar la contraseña.'); },
   async signUp(email, password) {
-    const { data, error } = await sb.auth.signUp({ email, password });
+    const { data, error } = await sb.auth.signUp({ email, password, options: { emailRedirectTo: location.origin + location.pathname } });
     if (error) throw new Error(error.message.includes('invitado') ? error.message : 'No se pudo crear la cuenta. ¿Te ha invitado un administrador con este correo?');
     if (!data.session) { try { await this.signIn(email, password); } catch { throw new Error('Si ya habías creado la cuenta, usa "Ya tengo cuenta" o "He olvidado la contraseña". Si es nueva, confirma el correo que te hemos enviado.'); } }
   },
