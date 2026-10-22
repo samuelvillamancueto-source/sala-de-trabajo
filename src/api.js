@@ -50,6 +50,8 @@ const real = {
   async ideas() { const { data, error } = await sb.from('ideas').select('*').order('created_at', { ascending: false }); if (error) throw error; return data; },
   async saveIdea(id, row) { const q = id ? sb.from('ideas').update(row).eq('id', id).select('id').single() : sb.from('ideas').insert(row).select('id').single(); const { data, error } = await q; if (error) throw error; return data.id; },
   async deleteIdea(id) { const { error } = await sb.from('ideas').delete().eq('id', id); if (error) throw error; },
+  async rotateCal() { const { data, error } = await sb.rpc('rotate_calendar_token'); if (error) throw error; return cfg.url + '/functions/v1/ical?t=' + data; },
+  async exportAll() { const t = ['clients', 'tasks', 'ideas', 'deliveries', 'task_comments', 'activity', 'profiles']; const out = { exported_at: new Date().toISOString() }; for (const n of t) { const { data, error } = await sb.from(n).select('*'); if (error) throw error; out[n] = data; } return out; },
   async people() { const { data, error } = await sb.rpc('people'); if (error) throw error; return data; },
   async invites() { const { data, error } = await sb.from('invites').select('*').order('created_at'); if (error) throw error; return data; },
   async addInvite(i) { const { error } = await sb.from('invites').upsert({ ...i, email: i.email.toLowerCase() }); if (error) throw error; },
@@ -122,5 +124,7 @@ demo.resetPassword = async () => {}; demo.setPassword = async () => {};
 demo.ideas = async () => JSON.parse(localStorage.getItem('sala-ideas') || '[]');
 demo.saveIdea = async (id, row) => { const l = await demo.ideas(); const i = l.findIndex((x) => x.id === id); const n = { id: id || uid(), created_at: new Date().toISOString(), ...(i >= 0 ? l[i] : {}), ...row }; if (i >= 0) l[i] = n; else l.unshift(n); localStorage.setItem('sala-ideas', JSON.stringify(l)); return n.id; };
 demo.deleteIdea = async (id) => localStorage.setItem('sala-ideas', JSON.stringify((await demo.ideas()).filter((x) => x.id !== id)));
+demo.rotateCal = async () => 'https://ejemplo.invalid/ical?t=demo2';
+demo.exportAll = async () => ({ demo: true });
 demo.calUrl = async () => 'https://ejemplo.invalid/ical?t=demo';
 export const api = DEMO ? demo : real;

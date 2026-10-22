@@ -110,3 +110,5 @@ th{color:var(--mut)}td{border-top-color:var(--line)}tbody tr:hover{background:va
 .task .row{align-items:center}.task.idea{display:block}.task.idea h4{margin:8px 0 4px}.task.idea .imeta{margin-top:6px}.task.idea .irow{margin-top:8px}
 .task a,.task select{-webkit-touch-callout:none}
 .irow{flex-wrap:wrap}.irow select.ist{max-width:100%;min-width:0}
+
+.inline2{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}.inline2 p{margin:0;flex:1;min-width:220px}

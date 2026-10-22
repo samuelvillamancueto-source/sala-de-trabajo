@@ -39,7 +39,27 @@ async function refresh() {
   S.ideas = isAdmin() ? await api.ideas().catch(() => []) : [];
 }
 function toast(m) { S.toast = m; const t = $('#toast'); if (t) { t.textContent = m; t.classList.add('on'); setTimeout(() => t.classList.remove('on'), 2600); } }
-async function guard(fn) { try { await fn(); } catch (e) { toast(e.message || 'Algo salió mal.'); } }
+function friendly(e) {
+  const m = String(e?.message || e || ''); const c = e?.code || '';
+  if (/jwt|token.*expired|PGRST30[0-9]/i.test(m + c)) return 'Tu sesión ha caducado. Vuelve a entrar.';
+  if (/failed to fetch|networkerror|load failed/i.test(m)) return 'Sin conexión con el servidor. Inténtalo de nuevo.';
+  if (c === '42501' || /row-level security|permission denied/i.test(m)) return 'No tienes permiso para hacer esto.';
+  if (c === '23514') return 'Revisa los datos: algún campo es demasiado largo o el enlace no empieza por http(s)://.';
+  if (c === '23505') return 'Ese dato ya existe.';
+  if (c === '23503') return 'No se puede por datos relacionados (por ejemplo, está en uso).';
+  if (/[a-z_]+\.[a-z_]+|pgrst|violates|constraint|syntax/i.test(m) && !/[áéíóúñ ]{12}/.test(m)) return 'Algo salió mal. Inténtalo de nuevo.';
+  return m || 'Algo salió mal.';
+}
+let busy = false;
+async function guard(fn) {
+  if (busy) return; busy = true;
+  try { await fn(); } catch (e) {
+    console.error(e);
+    if (/jwt|PGRST30[0-9]/i.test(String(e?.message) + (e?.code || ''))) { await api.signOut().catch(() => {}); S.me = null; return renderLogin('Tu sesión ha caducado. Vuelve a entrar.'); }
+    toast(friendly(e));
+  } finally { busy = false; }
+}
+window.addEventListener('unhandledrejection', (e) => { console.error(e.reason); toast(friendly(e.reason)); });
 
 // ---------- Login ----------
 function renderLogin(msg = '', signup = false) {
@@ -91,10 +111,11 @@ function render() {
   $('#cal').onclick = async () => {
     let url; try { url = await api.calUrl(); } catch (e) { return toast('No se pudo generar el enlace'); }
     const o = document.createElement('div'); o.className = 'calmodal';
-    o.innerHTML = `<div class="calbox"><h2>Tus fechas en Google Calendar</h2><p>Copia este enlace privado. En Google Calendar: <b>Otros calendarios</b> (+) &rarr; <b>Desde URL</b> &rarr; pégalo. Se actualiza solo (Google puede tardar unas horas). Solo aparecen las tareas con fecha${isAdmin() ? '' : ' que tienes asignadas'}.</p><input readonly value="${url}"><p class="small">No lo compartas: quien tenga el enlace ve los títulos de las tareas.</p><div class="row"><button class="btn" id="cc">Copiar enlace</button><button class="btn ghost" id="cx">Cerrar</button></div></div>`;
+    o.innerHTML = `<div class="calbox"><h2>Tus fechas en Google Calendar</h2><p>Copia este enlace privado. En Google Calendar: <b>Otros calendarios</b> (+) &rarr; <b>Desde URL</b> &rarr; pégalo. Se actualiza solo (Google puede tardar unas horas). Solo aparecen las tareas con fecha${isAdmin() ? '' : ' que tienes asignadas'}.</p><input readonly value="${url}"><p class="small">No lo compartas: quien tenga el enlace ve los títulos de las tareas.</p><div class="row"><button class="btn ghost" id="cr" title="Invalida el enlace anterior">Regenerar enlace</button><button class="btn" id="cc">Copiar enlace</button><button class="btn ghost" id="cx">Cerrar</button></div></div>`;
     document.body.appendChild(o);
     const inp = o.querySelector('input'); inp.onclick = () => inp.select();
     o.querySelector('#cc').onclick = async () => { try { await navigator.clipboard.writeText(url); } catch { inp.select(); document.execCommand('copy'); } toast('Enlace copiado'); };
+    o.querySelector('#cr').onclick = async () => { if (!confirm('Se crea un enlace nuevo y el anterior dejará de funcionar (tendrás que volver a añadirlo en Google Calendar). ¿Seguir?')) return; try { url = await api.rotateCal(); inp.value = url; toast('Enlace nuevo creado'); } catch (e) { toast(friendly(e)); } };
     o.querySelector('#cx').onclick = () => o.remove(); o.onclick = (e) => { if (e.target === o) o.remove(); };
   };
   $('#out').onclick = async () => { await api.signOut(); S.me = null; renderLogin(); };
@@ -228,6 +249,7 @@ function vEquipo() {
   <form class="card inline" id="inv"><input name="name" placeholder="Nombre" required><input name="email" type="email" placeholder="Correo" required>
   <select name="role"><option value="editor">Editor</option><option value="admin">Administrador</option><option value="agent">Cuenta de servicio (Instinct)</option></select><button class="btn primary">Invitar</button></form>
   <p class="muted small">La persona crea su cuenta con ese correo. Hasta que no la crea, aparece como pendiente.</p></section>
+  <section><h2>Copia de seguridad</h2><div class="card inline2"><p class="muted small">Descarga todo (tareas, ideas, clientes, entregas, comentarios y actividad) en un archivo. Además, la base de datos guarda una copia automática cada noche durante 14 días. El archivo no incluye contraseñas, pero sí datos de clientes: guárdalo en un sitio privado.</p><button class="btn" id="exp">Descargar copia (JSON)</button></div></section>
   <section><h2>Personas</h2><div class="card" id="plist">Cargando…</div></section>`;
 }
 async function loadEquipo() {
@@ -356,6 +378,7 @@ function bind() {
     const is = e.target.dataset?.istatus; if (is) return guard(async () => { await api.saveIdea(is, { status: e.target.value }); await refresh(); render(); toast('Estado guardado'); });
     if (e.target.id === 'ic') { S.ifilter.client = e.target.value; return render(); } if (e.target.id === 'is') { S.ifilter.status = e.target.value; return render(); } if (e.target.id === 'io') { S.ifilter.owner = e.target.value; return render(); } if (e.target.id === 'fw') { S.filter.who = e.target.value; render(); } if (e.target.id === 'fc') { S.filter.client = e.target.value; render(); } };
   const iq = $('#iq'); if (iq) iq.oninput = () => { S.ifilter.q = iq.value; const pos = iq.selectionStart; render(); const n = $('#iq'); n.focus(); n.setSelectionRange(pos, pos); };
+  const ex = $('#exp'); if (ex) ex.onclick = () => guard(async () => { const d = await api.exportAll(); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' })); a.download = 'sala-copia-' + today() + '.json'; document.body.appendChild(a); a.click(); a.remove(); toast('Copia descargada'); });
   const inv = $('#inv'); if (inv) inv.onsubmit = (e) => { e.preventDefault(); guard(async () => { const f = new FormData(inv); await api.addInvite({ name: f.get('name').trim(), email: f.get('email').trim(), role: f.get('role') }); inv.reset(); toast('Invitación creada'); loadEquipo(); }); };
   if (S.view === 'equipo') loadEquipo();
   enableDrag();
