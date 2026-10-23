@@ -1,0 +1,11 @@
+import puppeteer from 'puppeteer-core'; import fs from 'fs';
+const b=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',args:['--no-sandbox']});
+const w=ms=>new Promise(r=>setTimeout(r,ms));
+const p=await b.newPage(); await p.setViewport({width:1280,height:900});
+await p.goto('http://localhost:8765/'); await w(1000);
+await p.type('input[name=email]','samuelvillamancueto@gmail.com'); await p.type('input[name=password]',fs.readFileSync(process.argv[2],'utf8').trim()); await p.click('button[type=submit]'); await w(4500);
+await p.evaluate(()=>[...document.querySelectorAll('.nav')].find(a=>a.dataset.v==='tareas').click()); await w(1200);
+await p.screenshot({path:'/downloads/clientes-tablero.png'});
+await p.select('#fc','unk'); await w(800);
+await p.screenshot({path:'/downloads/clientes-sin-clasificar.png'});
+await b.close();
