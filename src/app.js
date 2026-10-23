@@ -131,7 +131,7 @@ window.addEventListener('hashchange', () => { if (!S.me) return; const v = locat
 function card(t) {
   const link = t.round > 0;
   return `<article class="task ${late(t) ? 'late' : ''}" data-open="${t.id}" tabindex="0">
-    <div class="row"><span class="chip p-${t.priority}">${PRIO[t.priority]}</span>${t.is_video ? '<span class="chip vid">Vídeo</span>' : ''}${t.approved ? '<span class="chip ok">Aprobado</span>' : ''}<span class="grip" title="Arrastra para cambiar de estado" aria-hidden="true">⋮⋮</span></div>
+    <div class="row"><span class="chip p-${t.priority}">${PRIO[t.priority]}</span>${t.is_video ? '<span class="chip vid">Vídeo</span>' : ''}<span class="chip cl">${esc(cname(t.client_id) || 'Interna')}</span>${t.approved ? '<span class="chip ok">Aprobado</span>' : ''}<span class="grip" title="Arrastra para cambiar de estado" aria-hidden="true">⋮⋮</span></div>
     <h4>${esc(t.title)}</h4>
     <div class="meta">${t.client_id ? `<span>${esc(cname(t.client_id))}</span>` : ''}<span class="${late(t) ? 'bad' : ''}">${fmt(t.due)}</span></div>
     <div class="foot"><span class="av">${esc(pname(t.assigned_to)[0] || '?')}</span>${(t.also_assigned || []).slice(0, 3).map((id) => `<span class="av av2">${esc(pname(id)[0] || '?')}</span>`).join('')}<span>${esc(pnames(t))}</span>${link ? `<span class="chip">Ronda ${t.round}</span>` : ''}</div>${t.created_by ? `<p class="by">Creada por ${esc(pname(t.created_by))}</p>` : ''}
@@ -183,13 +183,13 @@ function vResumen() {
 function filters() {
   return `<div class="filters">
     <select id="fw" aria-label="Asignado a"><option value="">Todos los editores</option>${S.people.map((p) => `<option value="${p.id}" ${S.filter.who === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}<option value="none" ${S.filter.who === 'none' ? 'selected' : ''}>Sin asignar</option></select>
-    <select id="fc" aria-label="Cliente"><option value="">Todos los clientes</option>${S.clients.map((c) => `<option value="${c.id}" ${S.filter.client === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
+    <select id="fc" aria-label="Cliente"><option value="">Todos los clientes</option><option value="none" ${S.filter.client === 'none' ? 'selected' : ''}>Tareas internas</option>${S.clients.map((c) => `<option value="${c.id}" ${S.filter.client === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
   </div>`;
 }
 function vTareas(video = false) {
   let list = video ? S.tasks.filter((t) => t.is_video) : S.tasks;
   if (S.filter.who) list = list.filter((t) => (S.filter.who === 'none' ? !t.assigned_to : mem(t).includes(S.filter.who)));
-  if (S.filter.client) list = list.filter((t) => t.client_id === S.filter.client);
+  if (S.filter.client) list = list.filter((t) => (S.filter.client === 'none' ? !t.client_id : t.client_id === S.filter.client));
   const v = S.mode === 'lista' ? listView(list) : S.mode === 'calendario' ? calendar(list) : board(list);
   return `<div class="head"><h1>${video ? 'Edición' : 'Tareas'}</h1><button class="btn primary" data-new>${video ? '+ Nueva tarea de edición' : '+ Nueva tarea'}</button></div>${video ? '<p class="muted small">Tareas marcadas como "vídeo para editar". Son las mismas tareas que en Tareas: el estado está sincronizado porque es la misma ficha. Los editores solo ven estas.</p>' : ''}
   <div class="bar2"><div class="seg">${['tablero', 'lista', 'calendario'].map((m) => `<button data-mode="${m}" class="${S.mode === m ? 'on' : ''}">${m[0].toUpperCase() + m.slice(1)}</button>`).join('')}</div>${filters()}</div>${v}`;
@@ -227,7 +227,7 @@ function openIdea(id) {
   const people = S.people.filter((p) => p.role !== 'agent');
   const m = modal(`<form id="if"><div class="head"><h2>${i ? 'Editar idea' : 'Nueva idea'}</h2><button type="button" class="btn ghost sm" data-close>Cerrar</button></div>
     <label>Idea<input name="title" required value="${esc(i?.title)}" placeholder="Ej: meme del lunes con la plantilla del momento"></label>
-    <div class="cols"><label>Cliente<select name="client_id"><option value="">Sin cliente</option>${S.clients.map((c) => `<option value="${c.id}" ${i?.client_id === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
+    <div class="cols"><label>Cliente<select name="client_id"><option value="">Sin cliente (tarea interna)</option>${S.clients.map((c) => `<option value="${c.id}" ${i?.client_id === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
     <label>Tipo<select name="kind">${opts(IDEA_KIND, i?.kind || 'viral')}</select></label>
     <label>Formato<select name="format">${opts(IDEA_FMT, i?.format || 'reel')}</select></label></div>
     <div class="cols"><label>Estado<select name="status">${opts(IDEA_ST, i?.status || 'nueva')}</select></label>
