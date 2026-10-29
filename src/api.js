@@ -46,7 +46,7 @@ const real = {
   async saveIdea(id, row) { const q = id ? sb.from('ideas').update(row).eq('id', id).select('id').single() : sb.from('ideas').insert(row).select('id').single(); const { data, error } = await q; if (error) throw error; return data.id; },
   async deleteIdea(id) { const { error } = await sb.from('ideas').delete().eq('id', id); if (error) throw error; },
   async rotateCal() { const { data, error } = await sb.rpc('rotate_calendar_token'); if (error) throw error; return cfg.url + '/functions/v1/ical?t=' + data; },
-  async exportAll() { const t = ['clients', 'tasks', 'ideas', 'deliveries', 'task_comments', 'activity', 'profiles', 'finance_entries', 'finance_budgets']; const out = { exported_at: new Date().toISOString() }; for (const n of t) { const { data, error } = await sb.from(n).select('*'); if (error) throw error; out[n] = data; } return out; },
+  async exportAll() { const t = ['clients', 'tasks', 'ideas', 'idea_comments', 'deliveries', 'task_comments', 'activity', 'profiles', 'finance_entries', 'finance_budgets']; const out = { exported_at: new Date().toISOString() }; for (const n of t) { const { data, error } = await sb.from(n).select('*'); if (error) throw error; out[n] = data; } return out; },
   async finEntries() { const { data, error } = await sb.from('finance_entries').select('*').order('occurred_on', { ascending: false }).order('created_at', { ascending: false }).limit(5000); if (error) throw error; return data; },
   async saveFinEntry(id, row) { const q = id ? sb.from('finance_entries').update(row).eq('id', id) : sb.from('finance_entries').insert(row); const { error } = await q; if (error) throw error; },
   async deleteFinEntry(id) { const { error } = await sb.from('finance_entries').delete().eq('id', id); if (error) throw error; },
@@ -72,6 +72,8 @@ const real = {
   async setProfile(id, patch) { const { error } = await sb.from('profiles').update(patch).eq('id', id); if (error) throw error; },
   async comments(taskId) { const { data, error } = await sb.from('task_comments').select('*').eq('task_id', taskId).order('created_at'); if (error) throw error; return data; },
   async addComment(taskId, author, body, forClient = false) { const { error } = await sb.from('task_comments').insert({ task_id: taskId, author, body, for_client: forClient }); if (error) throw error; },
+  async ideaComments(ideaId) { const { data, error } = await sb.from('idea_comments').select('*').eq('idea_id', ideaId).order('created_at'); if (error) throw error; return data; },
+  async addIdeaComment(ideaId, author, body) { const { error } = await sb.from('idea_comments').insert({ idea_id: ideaId, author, body }); if (error) throw error; },
 };
 
 // ---------- Demo (sin backend, solo para vista previa) ----------

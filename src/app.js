@@ -223,9 +223,12 @@ function vIdeas() {
     <select id="io"><option value="">Todos los responsables</option><option value="none">Sin responsable</option>${people.map((p) => `<option value="${p.id}" ${f.owner === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div>
   ${ideaBoard}`;
 }
-function openIdea(id) {
+async function openIdea(id) {
   const i = id ? S.ideas.find((x) => x.id === id) : null;
   const people = S.people.filter((p) => p.role !== 'agent');
+  const icoms = i ? await api.ideaComments(i.id).catch(() => []) : [];
+  const when = (d) => new Date(d).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Europe/Madrid' });
+  const icm = icoms.map((c) => `<div class="cm"><b>${esc(pname(c.author))}</b> <small>${when(c.created_at)}</small><p>${esc(c.body).replace(/\n/g, '<br>')}</p></div>`).join('');
   const m = modal(`<form id="if"><div class="head"><h2>${i ? 'Editar idea' : 'Nueva idea'}</h2><button type="button" class="btn ghost sm" data-close>Cerrar</button></div>
     <label>Idea<input name="title" required value="${esc(i?.title)}" placeholder="Ej: meme del lunes con la plantilla del momento"></label>
     <div class="cols"><label>Cliente<select name="client_id"><option value="">Sin cliente</option>${S.clients.map((c) => `<option value="${c.id}" ${i?.client_id === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
@@ -237,12 +240,14 @@ function openIdea(id) {
     <label>Enlace de referencia<input name="reference_url" type="url" value="${esc(i?.reference_url)}" placeholder="https://"></label>
     <label>Notas (guion, copy, cómo se haría)<textarea name="notes" rows="5">${esc(i?.notes)}</textarea></label>
     <p class="muted small">No guardes aquí contraseñas ni datos de dinero.</p>
+    ${i ? `<h3>Comentarios (guion y pautas)</h3>${icm || '<p class="empty">Sin comentarios.</p>'}<div class="cminput"><input id="icin" placeholder="Escribe un comentario"><button type="button" class="btn ghost sm" id="icadd">Enviar</button></div>` : ''}
     <div class="actions">${i ? '<span><button type="button" class="btn danger" id="idel">Eliminar</button> <button type="button" class="btn ghost" id="itask">Pasar a tarea</button></span>' : '<span></span>'}<button class="btn primary">Guardar</button></div></form>`);
   const done = async (msg) => { await refresh(); m.remove(); render(); toast(msg); };
   $('#if', m).onsubmit = (e) => { e.preventDefault(); guard(async () => { const f = new FormData(e.target);
     const row = { title: f.get('title').trim(), client_id: f.get('client_id') || null, kind: f.get('kind'), format: f.get('format'), status: f.get('status'), owner_id: f.get('owner_id') || null, proposed_by: f.get('proposed_by') || S.me.id, reference_url: f.get('reference_url').trim(), notes: f.get('notes') };
     await api.saveIdea(i?.id, row); await done('Idea guardada'); }); };
   const del = $('#idel', m); if (del) del.onclick = () => { if (confirm('¿Eliminar esta idea?')) guard(async () => { await api.deleteIdea(i.id); await done('Idea eliminada'); }); };
+  const icadd = $('#icadd', m); if (icadd) icadd.onclick = () => guard(async () => { const v = $('#icin', m).value.trim(); if (!v) return; await api.addIdeaComment(i.id, S.me.id, v); m.remove(); openIdea(i.id); });
   const tk = $('#itask', m); if (tk) tk.onclick = () => guard(async () => {
     if (i.task_id) return toast('Esta idea ya tiene tarea.');
     const tid = await api.createTask({ title: i.title, client_id: i.client_id, assigned_to: i.owner_id, brief: i.notes || '', reference_url: i.reference_url || '', created_by: S.me.id });
